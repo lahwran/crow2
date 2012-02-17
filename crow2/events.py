@@ -22,6 +22,18 @@ def paramdecorator(decorator_func):
 class Registration(object):
     pass
 
+@paramdecorator
+def yielding(func):
+    
+
 class Hook(object):
+    """
+    Contains the registration methods that are called to register a hook
+    """
     def __call__(self, func, *args, **keywords):
         pass
+
+class HookCategory(object):
+    """
+    Contains hooks or hookcategories. children can be accessed as attributes.
+    """

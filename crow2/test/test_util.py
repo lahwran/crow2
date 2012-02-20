@@ -1,9 +1,9 @@
-import crow2.events
+import crow2.util
 import pytest
 
 def test_paramdecorator_simple():
     runs = []
-    @crow2.events.paramdecorator
+    @crow2.util.paramdecorator
     def simple(func):
         runs.append(func)
         return func
@@ -23,7 +23,7 @@ def test_paramdecorator_simple():
 
 def test_paramdecorator_requiredarg():
     lastrun = []
-    @crow2.events.paramdecorator
+    @crow2.util.paramdecorator
     def decorator(func, requiredarg):
         del lastrun[:]
         lastrun.extend((func, requiredarg))
@@ -54,7 +54,7 @@ def test_paramdecorator_optionalarg():
     class Derp(object):
         def __init__(self, lastrun):
             self.lastrun=lastrun
-        @crow2.events.paramdecorator
+        @crow2.util.paramdecorator
         def decorator(self, func, optionalarg1=None, optionalarg2=None):
             del self.lastrun[:]
             self.lastrun.extend((func, optionalarg1, optionalarg2))
@@ -92,7 +92,7 @@ def test_paramdecorator_optionalarg():
 
 def test_paramdecorator_quirks():
     lastrun = []
-    @crow2.events.paramdecorator
+    @crow2.util.paramdecorator
     def decorator(func, func2):
         del lastrun[:]
         lastrun.extend((func, func2))

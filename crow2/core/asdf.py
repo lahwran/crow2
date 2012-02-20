@@ -18,5 +18,7 @@ def somefunc():
 def somefunc():
     asdf
 
-@hook.category.OTHERHOOK
+@hook.category.OTHERHOOK(before="crow2.core.asdf.somefunc")
 @
+
+

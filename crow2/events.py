@@ -4,7 +4,6 @@ import inspect
 import functools
 from collections import namedtuple
 
-from crow2.mro import mro
 from crow2.util import paramdecorator
 
 
@@ -34,11 +33,12 @@ class Hook(object):
     Contains the registration methods that are called to register a hook
     """
     def __init__(self):
-        self.baked = ()
+        self.baked_calllist = ()
 
     def fire(self, *args, **keywords):
-        for handler in self.baked:
-    def _save(self):
+        for handler in self.baked_calllist:
+    def _bake_calllist(self):
+        
 
     def register(self, func, *args, **keywords):
         pass
@@ -89,7 +89,7 @@ class ClassRegistrarMixin(object):
     def _do_instantiation(self):
         for registration in self._class_registrations:
             flattened_dict = {}
-            resolved_mro = mro(registration.target)
+            resolved_mro = inspect.getmro(registration.target)
             for cls in reversed(resolved_mro):
                 flattened_dict.update(cls.__dict__)
 

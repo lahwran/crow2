@@ -7,9 +7,6 @@ from collections import namedtuple
 from crow2.util import paramdecorator
 
 
-Registration = namedtuple("Registration", ["target", "args", "keywords"])
-MethodRegistration = namedtuple("MethodRegistration", ["hook", "args", "keywords"])
-
 class DictPopper(object):
     def __init__(self, d):
         self._d = _d
@@ -17,8 +14,6 @@ class DictPopper(object):
     def pop(self, key):
         try:
             ret = self._d[key]
-        except KeyError:
-            return None
         else:
             del self._d[key]
             return ret
@@ -28,20 +23,69 @@ class DictPopper(object):
 def yielding(func):
     pass
 
+class AttrDict(dict):
+    __slots__ = ()
+    __getattr__ = super(AttrDict).__getitem__
+    __setattr__ = super(AttrDict).__setitem__
+
+Registration = namedtuple("Registration", ["target", "args", "keywords"])
+MethodRegistration = namedtuple("MethodRegistration", ["hook", "args", "keywords"])
+
+class SortGroup(object):
+    def __init__(self, registrations, before, after, tag):
+        self.registrations = registrations
+        self.before = before
+        self.after = after
+        self.tag = tag
+
 class Hook(object):
     """
     Contains the registration methods that are called to register a hook
     """
     def __init__(self):
-        self.baked_calllist = ()
+        self.sorted_call_list = None
+        self.registrations = {}
+
+    ### Firing ------------------------------------------
 
     def fire(self, *args, **keywords):
-        for handler in self.baked_calllist:
-    def _bake_calllist(self):
-        
+        """
+        Fire the hook. Ensures call list is sorted and calls everything.
+        """
+        if self.sorted_call_list == None:
+            self.sorted_call_list = self._build_call_list(self.registrations)
+        callargs, callkeywords = self._make_calltuple(*args, **keywords)
+        self._fire_call_list(self.sorted_call_list, *callargs, **callkeywords)
 
+    def _make_callargs(self, *dicts, **keywords):
+        """
+        Prepare the objects which will be passed into handlers
+        """
+        calldict = AttrDict()
+        for d in dicts:
+            calldict.update(d)
+        calldict.update(keywords)
+        return (calldict,), {}
+
+    def _fire_call_list(self, calllist, *args, **keywords):
+        for handler in calllist:
+            handler(*args, **keywords)
+
+    ### Baking/fire preparation -------------------------
+
+    def _prepare_call_list(self, ):
+        self.prepare_sortgroups()
+
+    def _prepare_sortgroups(self):
+
+
+    ### Registration ------------------------------------
     def register(self, func, *args, **keywords):
-        pass
+        self.sorted_call_list = None # need to recalculate
+
+
+
+    '''
     __call__ = paramdecorator(register)
 
     @paramdecorator
@@ -59,7 +103,7 @@ class Hook(object):
             registrations = []
             func._method_registrations = registrations
         reg = MethodRegistration(func, args, keywords)
-        registrations.append(reg)
+        registrations.append(reg)'''
 
 class InstantiationError(Exception):
     "thrown when ClassRegistrarMixin fails to instantiate a class"

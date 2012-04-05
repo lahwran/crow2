@@ -10,8 +10,19 @@ i want to be able to indicate handler order by:
     - event state?
 
 how should resolving handler order work?
-    - probably want to use a dependency resolution algorithm
+    - probably want to use a dependency sort algorithm
         1. resolve all tags/references
+            - resolve string references to real references to the handlers
+                - should be done by matching registered handlers, not by looking up
+                        handlers in the python module structure
+                - error if no matches found?
+            - look up in registration dict, and if the registration has a tag,
+                    replace reference with that tag
+            - how do we deal with bound methods?
+                - ideally they'd all be a single entity
+                    - they probably should be registered as a single entity and managed
+                            by the other class, so let's not special case them
+            
         2. flip reverse dependencies
         3. merge all same-tagged items
         4. then simple topological sort
@@ -21,6 +32,8 @@ how should resolving handler order work?
             - what happens when a named reference is not available?
                 - perhaps it should error, and then the only way to do "optional" references
                         would be with tags?
+                    - need to be explicit in the error output, as it won't be from the
+                            same place registration happens
     - how should "permanent" tags work? ie, priority tags
         - same as normal tags, except the tag groups depend on each other?
     - do we really want to merge tags into one? plugins could create mysterious problems
@@ -32,7 +45,22 @@ how should resolving handler order work?
                         unresolvable
             - or tagged items must not have any dependencies
             - there could be a "set tag dependencies" call, which adds dependencies
-                    to a tag
+                    to a tag, which must then be shared between everything
+                - this is definitely how priority tags should work; exposing it would
+                    be nice too
+
+should multiple tags be allowed?
+    - seems like it'd be hard to be useful
+
+how should things that depend on tagged handlers directly be dealt with?
+        that is, if my handler x depends on y, and y is tagged "atag",
+        then y will be grouped with atag; so, where should x be placed?
+    - should the reference simply be changed to the tag? ie, x would now depend
+        on atag
+     asdf
+
+what identification should be used during dependency resolution?
+    - probably reference
 
 should tags and dependency information be independent of hook?
     - what if we have a circumstance where we need it to be hook-specific?
@@ -89,6 +117,10 @@ how should event call context be handled?
     - perhaps a context object, similar to re_gen.base.Creator, which automatically adds
          context to the calls when calling an event; would look like self.hookcontext.privmsg()
          or something when used
+    - alternately, "context" dicts which get passed around
+        - for instance, hook.fire(self.context, callcontext, my=value, my=value)
+            - all *args would be joined into a single dict
+            - that dict would then be updated with **keywords
 
 how should hook heirarchies be handled? for instance, privmsg -> message -> event
     - a goal of heirarchies is to allow easier construction of events contextually
@@ -128,4 +160,31 @@ how should hook.once() work? should it be a decorator?
     - could wrap the callable in a function which will unregister itself after being called
     - could add it to a special list of only-one-call hooks
 
+how should registrations be represented?
+    - namedtuple?
+    - class?
+    - dict?
+    - do we want to separate instructions for the hook - such as
+            tag/tags/priority/order/before/after/etc - from inst...
+        - wait, no, because of the hook subclassing scheme, EVERYTHING is instructions
+                for the hook. the only way to make a special hook *is to subclass*.
+                this is brilliant.
+    - okay so do we want to have any special representation for method registrations?
+        - probably not, just store how they were registered and do the real
+                handling of registration options when they're
+                loaded at class instantiation
+    - namedtuple for method registration, AttrDict for normal registration?
+        
 
+what arguments should be available to indicate order?
+    - before - string or other iterable which produces strings
+        - lone string gets special treatment?
+    - after
+        - same behavior as `before`
+    - tag - allows setting a single tag
+    - tags - allows setting multiple tags
+        - these could be merged the same way as before and after
+
+tag resolving - we don't need to resolve to anything that isn't registered
+
+should dependency reference resolution provide a way to 

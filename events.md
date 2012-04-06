@@ -15,6 +15,7 @@ how should resolving handler order work?
             - resolve string references to real references to the handlers
                 - should be done by matching registered handlers, not by looking up
                         handlers in the python module structure
+                    - use glob, if grouping is needed extend glob manually
                 - error if no matches found?
             - look up in registration dict, and if the registration has a tag,
                     replace reference with that tag
@@ -173,7 +174,9 @@ how should registrations be represented?
         - probably not, just store how they were registered and do the real
                 handling of registration options when they're
                 loaded at class instantiation
-    - namedtuple for method registration, AttrDict for normal registration?
+    - namedtuple for method 
+
+registration, AttrDict for normal registration?
         
 
 what arguments should be available to indicate order?
@@ -181,10 +184,12 @@ what arguments should be available to indicate order?
         - lone string gets special treatment?
     - after
         - same behavior as `before`
-    - tag - allows setting a single tag
+    - tag - allows setting a single tag,
     - tags - allows setting multiple tags
         - these could be merged the same way as before and after
 
 tag resolving - we don't need to resolve to anything that isn't registered
 
-should dependency reference resolution provide a way to 
+should dependency reference resolution provide a way to access other packages?
+
+should provide a way to treat dependency loops as warnings

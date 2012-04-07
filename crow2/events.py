@@ -38,6 +38,9 @@ class SortGroup(object):
         self.after = after
         self.tag = tag
 
+class DependencyReference(object):
+    def __init__(self, )
+
 class Hook(object):
     """
     Contains the registration methods that are called to register a hook
@@ -73,16 +76,14 @@ class Hook(object):
 
     ### Baking/fire preparation -------------------------
 
-    def _prepare_call_list(self, ):
-        self.prepare_sortgroups()
+    def _build_call_list(self, registrations):
 
-    def _prepare_sortgroups(self):
-
+        
 
     ### Registration ------------------------------------
     def register(self, func, *args, **keywords):
         self.sorted_call_list = None # need to recalculate
-
+        self.registrations[func] 
 
 
     '''

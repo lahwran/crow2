@@ -12,6 +12,7 @@ i want to be able to indicate handler order by:
 how should resolving handler order work?
     - probably want to use a dependency sort algorithm
         1. resolve all tags/references
+            - don't bother with searching for now?
             - resolve string references to real references to the handlers
                 - should be done by matching registered handlers, not by looking up
                         handlers in the python module structure
@@ -193,3 +194,46 @@ tag resolving - we don't need to resolve to anything that isn't registered
 should dependency reference resolution provide a way to access other packages?
 
 should provide a way to treat dependency loops as warnings
+
+do we want to be able to have more than one registration per function per hook?
+    - if so, do we want to be able to indicate which registration in a dependency
+            reference?
+    - would be rather difficult to make work with dependency resolution
+    - commands will *not* use more than one registration per function per hook;
+            they will use multiplexed hooks
+    - we do want to be able to have more than one set of hook filter arguments;
+            however, we do not want to be able to have more than one set of
+            behavior arguments (such as order information) do we?
+        - yeah we probably do actually
+    - dependencies need to be reworked to allow the same function multiple times
+        - wtf how do
+        - *multiple-registered handlers cannot be depended on*
+    - hook filter arguments should be implemented through some sort of multiplexing,
+            because dependencies don't make sense across them
+    - we need soft dependencies
+        - but I have no idea how to do that
+        - maybe we should just use tag-based ordering
+            - ...and tags can have dependencies?
+                - but what if we only have one handler on a tag
+                    - then we're back where we started
+                        - what if the only way to indicate order information is
+                                global
+                            - that could work, but then we're back to "what if we need
+                                    non-global order information"
+                                - could just say "deal with it"
+                                    - but that's not very nice
+            - would still need soft dependencies
+        - no, no soft dependencies
+    - we don't need more than one registration per hook; instead, filtering should be
+            very limited, and each set of filter arguments should implicitly generate
+            it's own hook
+        - should we allow them anyway?
+            - who cares? whichever is easier
+
+do we even want to be able to glob in the dependency references?
+    - probably not, as it would be very difficult to implement efficiently and be
+            dangerous to use; if it becomes necessary, it can be added later
+
+extend concept of "child calls" used for commands and regexes to the hook tree;
+        this allows incoming things to call a simple event, and it will automatically
+        dispatch it to the right place

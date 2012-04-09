@@ -156,7 +156,7 @@ the hook class needs to have good support for subclassing
         - however, not excessively, as this will be the most-called anything in the app
 
 should have some sort of namespace for special, automatically-added attributes
-    - perhaps _crowevents_%s_? doesn't need to be fancy, just guaranteed unique
+    - perhaps _crow2events_%s_? doesn't need to be fancy, just guaranteed unique
 
 how should hook.once() work? should it be a decorator?
     - could wrap the callable in a function which will unregister itself after being called
@@ -232,8 +232,46 @@ do we want to be able to have more than one registration per function per hook?
 
 do we even want to be able to glob in the dependency references?
     - probably not, as it would be very difficult to implement efficiently and be
-            dangerous to use; if it becomes necessary, it can be added later
+            messy to use; if it becomes necessary, it can be added later
 
 extend concept of "child calls" used for commands and regexes to the hook tree;
-        this allows incoming things to call a simple event, and it will automatically
-        dispatch it to the right place
+        this allows incoming things to call a basic event, and it will automatically
+        dispatch it to the specific, right place
+
+printing hooks should show you information about it
+
+only one tag per hook per function
+
+using a tag on a function creates the tag, but you can also set dependencies for the tag separately
+
+if you use a tag on a function, that function cannot have any of it's own dependencies
+
+when reversing dependencies, should we remove the original reference, for later speedup purposes?
+    - not for now
+    - if we do, then we can't unregister things which contain reversed dependencies
+    - reversing dependencies should probably be done without modifying the registration
+
+do we want optional dependencies?
+    - difference to "soft" dependencies is that dependency loops are still an error; however,
+            missing references are not
+    - probably do want to have them
+    - how should they be represented?
+        - before_optional and after_optional?
+        - a "?" somewhere in the string? perhaps at the end?
+
+need separate class CancellableHook(Hook)
+
+should _fire_call_list be aware of dependencies and tags, to appropriately skip calls
+        when something raises an exception?
+    - perhaps exception handling should be overridable, and default to calling hook._hookexception
+            (which would have overriden exception handling which simply logs)
+
+unregistering things from tags may leave empty tags behind
+
+we need to be using zope.interface
+
+tags can only depend on other tags?
+
+can't depend on methods for now, will have to add later
+
+need better error recovery - one missing dependency should not prevent use

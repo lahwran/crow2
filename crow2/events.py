@@ -1,9 +1,11 @@
+#!/usr/bin/python
 #TODO: document me
 
 import inspect
 import functools
 import types
 from twisted.python.reflect import namedAny
+from twisted.python import log
 from collections import namedtuple, defaultdict
 
 from crow2.util import paramdecorator
@@ -16,11 +18,16 @@ def yielding(func):
 
 class AttrDict(dict):
     def __getattr__(self, name):
-        return self[name]
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError
 
     def __setattr__(self, name, attr):
         self[name] = attr
 
+    def __repr__(self):
+        return "AttrDict(%s)" % super(AttrDict, self).__repr__() #pragma: no cover
 
 MethodRegistration = namedtuple("MethodRegistration", ["hook", "args", "keywords"])
 
@@ -35,15 +42,18 @@ class SingleRegistration(object):
     def targets(self):
         return set((self.target,))
 
+    def __repr__(self):
+        return "SingleRegistration(%r)" % self.target
+
 class TagDict(dict):
     def __missing__(self, key):
-        value = TaggedGroup(self, key)
+        value = TaggedGroup(key, self)
         self[key] = value
         return value
 
 class TaggedGroup(object):
     _is_taggroup = True
-    def __init__(self, parent, name):
+    def __init__(self, name, parent):
         self.name = name
         self._parent = parent
         self.before = ()
@@ -73,19 +83,176 @@ class DependencyMissingError(Exception):
         Exception.__init__(self, "%r: Could not resolve dependency %r of dep-res node %r" % args)
 
 class DuplicateRegistrationError(Exception):
-    def __init__(self, *args):
-        Exception.__init__(self, "%r registered twice to hook %r" % args)
+    pass
 
 class InvalidOrderRequirementsError(Exception):
     def __init__(self, *args):
         Exception.__init__(self, "%r registered to %r with both tag and dependency" % args)
 
 class NotRegisteredError(Exception):
-    def __init__(self, hook, func):
-        Exception.__init__(self, "%r: cannot unregister %r as it is not registered" % (hook, func))
+    pass
 
 class NameResolutionError(Exception):
     pass
+
+class NotInstantiableError(Exception):
+    pass
+
+class AlreadyRegisteredError(Exception):
+    pass
+
+class MethodProxy(object):
+    def __init__(self, clazz, name, methodfunc, regs):
+        self.clazz = clazz
+        self.name = name
+        self.methodfunc = methodfunc
+        self.unbound = getattr(clazz, name)
+        self.registrations = regs
+
+        self._proxy_for = (self.methodfunc, self.unbound)
+
+        self.hooks_registered = []
+
+        self.bound_methods = []
+        self.instances_to_methods = {}
+
+    def register(self):
+        if self.hooks_registered:
+            raise AlreadyRegisteredError(repr(self))
+
+        for registration in self.registrations:
+            hook = registration.hook
+            hook.register(self, *registration.args, **registration.keywords)
+            self.hooks_registered.append(hook)
+
+    def unregister(self):
+        if not self.hooks_registered:
+            raise NotRegisteredError(repr(self))
+
+        for hook in self.hooks_registered:
+            hook.unregister(self)
+        self.hooks_registered = []
+
+    def add_bound_method(self, instance):
+        bound_method = getattr(instance, self.name)
+        instance_id = id(instance)
+        if instance_id in self.instances_to_methods:
+            raise AlreadyRegisteredError("%r (id: %r) to %r" % (instance, instance_id, self))
+        self.instances_to_methods[instance_id] = bound_method
+        self.bound_methods.append(bound_method)
+
+    def remove_bound_method(self, instance):
+        instance_id = id(instance)
+        try:
+            bound_method = self.instances_to_methods[instance_id]
+        except KeyError:
+            raise NotRegisteredError("%r (id: %r) to %r" % (instance, instance_id, self))
+        else:
+            del self.instances_to_methods[instance_id]
+            # bad time complexity, but I expect that the datasets will be small,
+            # so the overhead is preferable; if people use this for large numbers
+            # of class instantiations of the same class to the same hook, then
+            # this will need to be changed to a data structure which can handle
+            # that; I'm doing this because I don't off the top of my head know
+            # what will have equivalent overhead but better time complexity
+            self.bound_methods.remove(bound_method)
+
+    def __call__(self, *args, **keywords):
+        for bound_method in self.bound_methods:
+            bound_method(*args, **keywords)
+
+    @classmethod
+    def _get_method_regs(selfcls, method):
+        try:
+            return method._crow2events_method_regs_
+        except AttributeError:
+            return []
+
+    def __repr__(self):
+        return "MethodProxy(%s.%s.%s)" % (self.clazz.__module__, self.clazz.__name__,
+                                            self.name)
+
+class ClassRegistration(object):
+    def __init__(self, hook, clazz):
+        self.clazz = clazz
+        flattened = AttrDict()
+        self.flattened = flattened
+        resolved_mro = inspect.getmro(clazz)
+        for parentclass in reversed(resolved_mro):
+            flattened.update(parentclass.__dict__)
+
+        self._proxy_for = (clazz,)
+        self.hook = hook
+
+        init = flattened['__init__']
+        if MethodProxy._get_method_regs(init):
+            raise NotInstantiableError("%r: cannot register class %r for instantiation with listening __init__" % 
+                                        (self, clazz))
+
+        self.method_proxies = set()
+        self.proxies_registered = False
+        for name, attribute in flattened.items():
+            reg = MethodProxy._get_method_regs(attribute)
+            if reg:
+                self.method_proxies.add(MethodProxy(clazz, name, attribute, reg))
+
+        self.instances = {}
+
+    def register_proxies(self):
+        for proxy in self.method_proxies:
+            proxy.register()
+        self.proxies_registered = True
+
+    def unregister_proxies(self):
+        for proxy in self.method_proxies:
+            proxy.unregister()
+        self.proxies_registered = False
+
+    def __call__(self, *call_args, **call_keywords):
+        instance = self.clazz(*call_args, **call_keywords)
+        instance_id = id(instance)
+
+        if not len(self.instances):
+            if self.proxies_registered:
+                raise AlreadyRegisteredError("%r: about to register proxies, but proxies "
+                            "are registered, and no previous instances known!" % self)
+            self.register_proxies()
+
+        self.instances[instance_id] = instance
+        for proxy in self.method_proxies:
+            proxy.add_bound_method(instance)
+
+        if hasattr(instance, "parent_registration"):
+            log.msg("WARNING: about to obliterate instance %r's attribute parent_registration"
+                               " with %r!" % (instance, self))
+        instance.parent_registration = self
+        @functools.wraps(self.free_instance)
+        def delete():
+            self.free_instance(instance)
+        if hasattr(instance, "delete"):
+            log.msg("WARNING: about to obliterate instance %r's attribute delete"
+                               " with %r!" % (instance, delete))
+        instance.delete = delete
+        return instance
+
+
+    def free_instance(self, instance):
+        instance_id = id(instance)
+        if instance_id not in self.instances:
+            raise NotRegisteredError("%r: instance %r (id: %r) is not registered" % (self, instance, instance_id))
+
+        del self.instances[instance_id]
+
+        for proxy in self.method_proxies:
+            proxy.remove_bound_method(instance)
+
+        if not len(self.instances):
+            if not self.proxies_registered:
+                raise NotRegisteredError("%r: about to unregister proxies, but proxies are already "
+                                        "unregistered, and all instances already unregistered!" % self)
+            self.unregister_proxies()
+
+
 
 class Hook(object):
     """
@@ -93,8 +260,9 @@ class Hook(object):
     """
     def __init__(self, default_tags=()):
         self.sorted_call_list = None
-        self.handlers = {}
-        self.handlernames = {}
+        self.handler_references = {}
+        self.references = {}
+        self.referencenames = {}
         self.registration_groups = set()
         self.tags = TagDict()
 
@@ -125,6 +293,7 @@ class Hook(object):
         for d in dicts:
             calldict.update(d)
         calldict.update(keywords)
+        calldict.update({"calling_hook": self})
         return (calldict,), {}
 
     def _fire_call_list(self, calllist, *args, **keywords):
@@ -134,7 +303,7 @@ class Hook(object):
             #try:
             handler(*args, **keywords)
             #except:
-            #    assert not "left unfinished"
+            #    log.err()
                 # derp, what now
 
     ### Baking/fire preparation -------------------------
@@ -149,7 +318,7 @@ class Hook(object):
 
         if type(obj) == types.MethodType:
             return '.'.join((obj.__module__, obj.im_class.__name__, obj.__name__))
-        elif type(obj) in (types.ClassType, types.FunctionType):
+        elif type(obj) in (type, types.ClassType, types.FunctionType):
             result = obj.__module__ + "." + obj.__name__
         elif type(obj) == types.ModuleType:
             result = obj.__name__
@@ -162,11 +331,11 @@ class Hook(object):
             pass
         else:
             if resolved_obj is not obj:
-                assert not 'left unfinished'
-                # warn here
+                log.msg("WARNING: name resolved to different object: %r -> %r -> %r" % # pragma: no cover
+                        (obj, result, resolved_obj))
         try:
             setattr(obj, cachename, result)
-        except AttributeError:
+        except AttributeError: # shouldn't normally happen, so: pragma: no cover
             pass # cannot cache
         return result
 
@@ -176,19 +345,16 @@ class Hook(object):
             # relative/local
             depsplit = dep.split(".")
             namesplit = self._get_name(node.target).split(".")
-            if len(depsplit) == 1: # no dots - local; go up 1
-                up = 1
-            else: # at least one dot; go up to the package level
-                up = 2
-            relative_dep = ".".join(namesplit[:-up] + depsplit)
-            try:
-                return self.handlernames[relative_dep]
-            except KeyError:
-                pass
+            for up in (1, 2):
+                relative_dep = ".".join(namesplit[:-up] + depsplit)
+                try:
+                    return self.referencenames[relative_dep]
+                except KeyError:
+                    pass
 
             # absolute
             try:
-                return self.handlernames[dep]
+                return self.referencenames[dep]
             except KeyError:
                 pass
 
@@ -204,11 +370,13 @@ class Hook(object):
 
     def _resolve_dep(self, node, dep):
         if type(dep) == str:
-            dep = self._lookup_strdep(node, dep)
-        try:
-            return self.handlers[dep]
-        except KeyError:
+            registration = self._lookup_strdep(node, dep)
+        elif hasattr(dep, "_is_taggroup"):
             return dep
+        else:
+            handler = self.references[dep]
+            registration = self.handler_references[handler]
+        return registration
 
     def _build_call_list(self, registrations):
         # todo: expansion handling
@@ -239,60 +407,77 @@ class Hook(object):
             return tuple(deplist)
 
     def register(self, func, **keywords):
-        if func in self.handlers:
-            raise DuplicateRegistrationError(func, self)
         before = self._tuplize_dependency(keywords.get("before", tuple()))
         after = self._tuplize_dependency(keywords.get("after", tuple()))
         tag = keywords.get("tag", None)
 
         if tag and (len(before) or len(after)):
             raise InvalidOrderRequirementsError(func, self)
-        elif tag:
-            self.tags[tag].add(func)
-            self.handlers[func] = self.tags[tag]
-        else:
-            registration = SingleRegistration(func, (before),
-                                        self._tuplize_dependency(after))
-            self.handlers[func] = registration
-        
-        self.registration_groups.add(self.handlers[func])
-
-        self.sorted_call_list = None # need to recalculate
 
         try:
-            self.handlernames[self._get_name(func)] = self.handlers[func]
-        except NameResolutionError:
-            assert not "left unfinished"
-            # NEED LOGGING WAT DO
-            # do not correct this syntax error until a logging solution is assembled
-            # twisted logging was cool iirc
+            references = func._proxy_for
+        except AttributeError:
+            references = [func]
+        for reference in references:
+            if reference in self.references:
+                raise DuplicateRegistrationError("%r (%r) registered twice to hook %r" %
+                        (reference, func, self))
+
+        if tag:
+            self.tags[tag].add(func)
+            self.handler_references[func] = self.tags[tag]
+        else:
+            registration = SingleRegistration(func, before, after)
+            self.handler_references[func] = registration
+
+        for reference in references:
+            self.references[reference] = func
+            try:
+                self.referencenames[self._get_name(reference)] = self.handler_references[func]
+            except NameResolutionError:
+                log.msg("WARNING: unable to determine name of object %r (%s, %r, %r)" %
+                            (reference, str(reference), type(reference), dir(reference)))
+
+
+        self.registration_groups.add(self.handler_references[func])
+
+        self.sorted_call_list = None # need to recalculate
 
         return func
 
     def register_once(self, func, *reg_args, **reg_keywords):
         @functools.wraps(func)
-        def deregister(*call_args, **call_keywords):
+        def unregister_callback(*call_args, **call_keywords):
             try:
                 return func(*call_args, **call_keywords)
             finally:
-                self.deregister(deregister)
-        self.register(deregister, *reg_args, **reg_keywords)
+                self.unregister(unregister_callback)
+        self.register(unregister_callback, *reg_args, **reg_keywords)
         return func
 
-    def deregister(self, func):
-        if func not in self.handlers:
-            raise NotRegisteredError(self, func)
-        registration = self.handlers[func]
-        del self.handlers[func]
+    def unregister(self, func):
+        try:
+            references = func._proxy_for
+        except AttributeError:
+            references = [func]
+        for reference in references:
+            if reference not in self.references:
+                raise NotRegisteredError("%r: cannot unregister %r (%r) as it is not registered" %
+                        (self, reference, func))
+        for reference in references:
+            del self.references[reference]
+            try:
+                del self.referencenames[self._get_name(reference)]
+            except NameResolutionError:
+                log.msg("WARNING: unable to determine name of object %r (%s, %r, %r)" %
+                            (reference, str(reference), type(reference), dir(reference)))
+
+        registration = self.handler_references[func]
+        del self.handler_references[func]
         if registration._is_taggroup:
             registration.remove(func)
         else:
             self.registration_groups.remove(registration)
-
-        try:
-            del self.handlernames[self._get_name(func)]
-        except NameResolutionError:
-            assert not "left unfinished"
 
         self.sorted_call_list = None
 
@@ -320,53 +505,19 @@ class Hook(object):
         try:
             method_regs = func._crow2events_method_regs_
         except AttributeError:
-            registrations = []
-            func._crow2events_method_regs_ = registrations
-        reg = MethodRegistration(func, args, keywords)
+            method_regs = []
+            func._crow2events_method_regs_ = method_regs
+        reg = MethodRegistration(self, args, keywords)
         method_regs.append(reg)
+        return func
 
+    def register_instantiation(self, clazz, *reg_args, **reg_keywords):
+        self.register(ClassRegistration(self, clazz), *reg_args, **reg_keywords)
 
-class InstantiationError(Exception):
-    "thrown when ClassRegistrarMixin fails to instantiate a class"
+        return clazz
 
-'''
-class ClassRegistrarMixin(object):
-    def __init__(self):
-        self._class_registrations = []
-        self._instances = []
-
-    @paramdecorator
     def instantiate(self, cls, *args, **keywords):
-        self.classes.add(Registration(cls, args, keywords))
-
-    @paramdecorator
-    def use_super(self, func, type):
-        if type in ("none", "recurse", "normal"):
-            func._super = type
-        else:
-            raise Exception("valid arguments for use_super() are 'none', 'recurse', or 'normal'")
-
-    def _getreg(self, method):
-        try:
-            return method._method_registrations
-        except:
-            return []
-
-    def _do_instantiation(self):
-        for registration in self._class_registrations:
-            flattened_dict = {}
-            resolved_mro = inspect.getmro(registration.target)
-            for cls in reversed(resolved_mro):
-                flattened_dict.update(cls.__dict__)
-
-            init = flattened_dict["__init__"]
-            if self._getreg(init):
-                if getattr(init, "_super", "none") != "none"
-                    raise InstantiationError("__init__ may not use_super: %r.%r" %
-                        (registration.target, init))
-                def delayed_instantiate(*args, **keywords):
-                    
-                initreg = self._getreg(init)
+        return self.register_instantiation(cls, *args, **keywords)
 
 class HookCategory(object):
     """
@@ -391,4 +542,5 @@ class HookCategory(object):
 
     def __setitem__(self, item, value):
         self.children[item] = value
-'''
+
+# '''

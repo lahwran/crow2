@@ -1,6 +1,7 @@
 from crow2 import events
 from crow2 import toposort
 import pytest
+import crow2.test.setup
 
 class Counter(object):
     "a mutable counter"
@@ -8,6 +9,75 @@ class Counter(object):
         self.count = 0
     def tick(self):
         self.count += 1
+
+def test_class_reg_errors():
+    hook = events.Hook()
+    hook2 = events.Hook()
+    class Clazz(object):
+        @hook2.method
+        def __init__(self, event):
+            pass
+
+    with pytest.raises(events.NotInstantiableError):
+        registration = events.ClassRegistration(hook, Clazz)
+
+    class Clazz(object):
+        def __init__(self):
+            pass
+
+        @hook2.method
+        def amethod(self, event):
+            pass
+
+    registration = events.ClassRegistration(hook, Clazz)
+    registration.register_proxies()
+
+    with pytest.raises(events.AlreadyRegisteredError):
+        registration()
+
+    class Clazz(object):
+        def __init__(self):
+            self.parent_registration = None
+        def delete(self):
+            pass
+
+    registration = events.ClassRegistration(hook, Clazz)
+    instance = registration()
+    instance.delete()
+
+    instance = Clazz()
+    with pytest.raises(events.NotRegisteredError):
+        registration.free_instance(instance)
+
+    instance = registration()
+    registration.unregister_proxies()
+    with pytest.raises(events.NotRegisteredError):
+        instance.delete()
+
+def test_method_proxy_errors():
+    hook = events.Hook()
+    class Clazz(object):
+        @hook.method
+        def amethod(self):
+            pass
+    methodfunc = Clazz.__dict__['amethod']
+    proxy = events.MethodProxy(Clazz, methodfunc.__name__, methodfunc,
+                    events.MethodProxy._get_method_regs(methodfunc))
+    proxy.register()
+    with pytest.raises(events.AlreadyRegisteredError):
+        proxy.register()
+    proxy.unregister()
+    with pytest.raises(events.NotRegisteredError):
+        proxy.unregister()
+
+    instance = Clazz()
+    proxy.add_bound_method(instance)
+    with pytest.raises(events.AlreadyRegisteredError):
+        proxy.add_bound_method(instance)
+
+    proxy.remove_bound_method(instance)
+    with pytest.raises(events.NotRegisteredError):
+        proxy.remove_bound_method(instance)
 
 class TestHook(object):
 
@@ -163,7 +233,7 @@ class TestHook(object):
             hook.fire()
 
         with pytest.raises(events.NotRegisteredError):
-            hook.deregister(callonce)
+            hook.unregister(callonce)
 
     def test_dependency_lookup(self): #dependency lookups are very wrong
         hook = events.Hook()
@@ -181,8 +251,115 @@ class TestHook(object):
 
         hook.fire()
 
+    def test_get_name(self):
+        hook = events.Hook()
+        assert hook._get_name(TestHook) == "crow2.test.test_events.TestHook"
+
+        from crow2.test import hook_reference_target
+        assert hook._get_name(hook_reference_target) == "crow2.test.hook_reference_target"
+
+        assert hook._get_name(self.test_dependency_lookup) == "crow2.test.test_events.TestHook.test_dependency_lookup"
+
+        assert hook._get_name(test_attrdict) == "crow2.test.test_events.test_attrdict"
+
+        with pytest.raises(Exception):
+            hook._get_name(5)
+
+        class Immutable(object):
+            "test to ensure caching does not cause any unexpected behavior"
+            __slots__ = ()
+
+        immutable_instance = Immutable()
+
+        # NOTE: this is not the behavior people probably expect! will need documenting
+        assert hook._get_name(Immutable) == "crow2.test.test_events.Immutable"
+        assert hook._get_name(Immutable) == "crow2.test.test_events.Immutable"
+
+    def test_class_hook(self):
+        hook_init = events.Hook()
+        hook_run = events.Hook()
+        hook_cleanup = events.Hook()
+        the_value = "method was run"
+        the_second_value = "method was not run"
+
+        @hook_init.instantiate
+        class ClassHandler(object):
+            def __init__(self, event):
+                self.value = event.value
+
+            @hook_run.method
+            def amethod(self, event):
+                event.value = self.value
+
+            @hook_cleanup.method
+            def free(self, event):
+                self.delete()
+
+        hook_init.fire(value=the_value)
+        assert hook_run.fire(value=the_second_value).value == the_value
+        hook_cleanup.fire()
+        assert hook_run.fire(value=the_second_value).value == the_second_value
+
+    def test_class_referencing(self):
+        hook_init = events.Hook()
+        hook_run = events.Hook()
+        hook_cleanup = events.Hook()
+        counter = Counter()
+
+        @hook_init.instantiate
+        class ClassHandler(object):
+            def __init__(self, event):
+                pass
+
+            @hook_run.method
+            def target1(self, event):
+                print "target1"
+                assert event.target1_before
+                event.target1 = True
+                counter.tick()
+
+            @hook_cleanup.method
+            def cleanup(self, event):
+                self.delete()
+
+        @hook_run(before="ClassHandler.target1")
+        def target1_before(event):
+            print "target1_before"
+            event.target1_before = True
+
+        @hook_run(after=ClassHandler.target1)
+        def target1_after(event):
+            print "target1_after"
+            assert event.target1
+            event.target1_after = True
+
+        hook_init.fire()
+        hook_init.fire()
+        run = hook_run.fire()
+        assert run.target1_after
+        assert counter.count == 2
+        hook_cleanup.fire()
+
+    def test_unresolvable_object(self, capsys):
+        hook = events.Hook()
+        hook.register(tuple())
+
+        out, err = capsys.readouterr()
+
+        assert "WARNING" in out
+
+        hook.unregister(tuple())
+
+        out, err = capsys.readouterr()
+
+        assert "WARNING" in out
+
+
+
 def test_attrdict():
     d = events.AttrDict()
     d.blah = 1
     assert d.blah
     assert d == {"blah": 1}
+    with pytest.raises(AttributeError):
+        d.doesnotexis

@@ -275,3 +275,14 @@ tags can only depend on other tags?
 can't depend on methods for now, will have to add later
 
 need better error recovery - one missing dependency should not prevent use
+
+should class instantiation require singletonness of instantiated classes?
+
+should we be using closures for once and instantiate? perhaps those should be classes
+
+hodgepodge of different kinds of registration storage, yuck
+
+automatic type detection would be cool, but would it be practical?
+
+need to unify the way special things (methods, classes, yield functions, normal functions) are represented by the hook,
+        so that they can be referenced properly by the dependency thingy

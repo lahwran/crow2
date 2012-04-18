@@ -10,11 +10,40 @@ from collections import namedtuple, defaultdict
 
 from crow2.util import paramdecorator
 from crow2.toposort import topological_sort
+from crow2.adapterutil import adapter_for
 
 
 @paramdecorator
 def yielding(func):
-    pass
+    """
+    my own implementation of basically the same thing twisted.defer.inlineCallbacks does, except
+    with crow2 goodness
+
+    note: if a yielded callback is garbage collected without being fired, then the generator
+    will be lost without continuing
+    """
+    @functools.wraps(func)
+    def proxy(*args, **keywords):
+        generator = func(*args, **keywords)
+        callback_manager = IteratorCallbacks(generator)
+        callback_manager.first()
+        return callback_manager
+    return proxy
+
+
+
+class IteratorCallbacks(object):
+    def __init__(self, iterator):
+        self.iterator = iterator
+        self.register_next()
+
+    def register_next(self):
+        pass
+
+    def callback(self, *args, **keywords):
+        pass
+
+
 
 class AttrDict(dict):
     def __getattr__(self, name):
@@ -482,7 +511,7 @@ class Hook(object):
         self.sorted_call_list = None
 
 
-    # these three are separate so that overriding register_* in subclasses will work as expected
+    # these two are separate so that overriding register_* in subclasses will work as expected
     # they need to be separate attributes because paramdecorator-ized funcs behave very unexpectedly
     # when called as normal functions
     @paramdecorator
@@ -516,6 +545,7 @@ class Hook(object):
 
         return clazz
 
+    @paramdecorator
     def instantiate(self, cls, *args, **keywords):
         return self.register_instantiation(cls, *args, **keywords)
 

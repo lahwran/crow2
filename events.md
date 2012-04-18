@@ -277,12 +277,48 @@ can't depend on methods for now, will have to add later
 need better error recovery - one missing dependency should not prevent use
 
 should class instantiation require singletonness of instantiated classes?
+    - no
 
 should we be using closures for once and instantiate? perhaps those should be classes
+    - instantiate definitely should be, once perhaps is okay as a closure
 
 hodgepodge of different kinds of registration storage, yuck
 
 automatic type detection would be cool, but would it be practical?
+    - not really
 
 need to unify the way special things (methods, classes, yield functions, normal functions) are represented by the hook,
         so that they can be referenced properly by the dependency thingy
+
+yield handlers
+    - we definitely want a proxy class, like class instantiation uses, along with a separate call to register
+        - it's too bad that we can't automatically detect, but it's simply not feasible to do cleanly
+            - the closest we could come is doing a check on anything a handler might return, which is horribly yuck
+    - we want to be able to yield both events.Hook objects and twisted.defer.Deferred objects, and register to them
+    - how should events.Hook registration work? will we need to modify paramdecorator?
+        - probably not; the yield should be a callable which will be called
+            - but then how will the generator management proxy know whether a hook or deferred was yielded?
+            - maybe we will have to modify paramdecorator after all
+                - paramdecorator probably needs to be converted from a closure into a class
+                    - make sure to properly handle function descriptor proxying
+            - this is actually perfectly feasible - it would call whatever is yielded with a new proxy callback,
+                    which would send *args and **keywords back into the generator
+                - this magically gives us deferred integration, too
+                    - probably want to special-case it anyway, so that yielding the deferred itself will cause .addCallback to be called
+                - but then how do we automatically unregister?
+                    - paramdecorator needs to give us an indication of what was called, so that if it's proxying
+                            __call__(), we can sneakily call once()
+                    - perhaps instead of allowing any callable, we'd only be aware of hook objects, parameterized
+                            paramdecorator intermediates (ie, paramdecorator.meta_decorated), and deferreds
+                        - this seems suboptimal too.
+    - do we want the "portions" of the generator after the first one to be referenceable as dependencies?
+        - possibly
+        - what if we go the other direction? don't allow referencing a generator registration as a dependency at all?
+            - no reason to prevent tagging, though, which is what you'd usually want to use anyway
+                - sounds good
+    - what we probably want to do is have a special case for hook, a somewhat less special case for deferreds,
+            and then for other callables just call them with the callback as the argument.
+        - how do we want to special-case hook, then? we need to do something about paramdecorator, as it does not
+                really allow anything like this
+            - we really need zope.interface - this is the perfect scenario for adapters
+

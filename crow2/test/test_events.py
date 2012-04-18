@@ -363,3 +363,92 @@ def test_attrdict():
     assert d == {"blah": 1}
     with pytest.raises(AttributeError):
         d.doesnotexis
+
+def test_idea():
+    class Arguments(tuple):
+        def _add_dict(self, d):
+            self.keywords = d
+        def __getattr__(self, attr):
+            try:
+                return self.keywords[attr]
+            except KeyError:
+                raise AttributeError
+    derp = Arguments((1, 2))
+    derp._add_dict(dict(c=5, d=6))
+    a, b = derp
+    assert a == 1
+    assert b == 2
+    assert tuple(derp) == (1, 2)
+    assert derp.c == 5
+    assert derp.d == 6
+
+def test_other_idea():
+    class Arguments(tuple):
+        def _add_dict(self, d):
+            self.keywords = d
+        def __getitem__(self, item):
+            try:
+                return super(Arguments, self).__getitem__(item)
+            except TypeError:
+                return self.keywords[item]
+    derp = Arguments((1, 2))
+    derp._add_dict(dict(c=5, d=6))
+    a, b = derp
+    assert a == 1
+    assert b == 2
+    assert tuple(derp) == (1, 2)
+    assert derp["c"] == 5
+    assert derp["d"] == 6
+    assert derp[0] == 1
+    assert derp[1] == 2
+
+def test_somewhat_better_idea():
+    class Arguments(object):
+        def __init__(self, positional, keywords):
+            self.positional = tuple(positional)
+            self.keywords = dict(keywords)
+
+        def __hash__(self, other):
+            raise TypeError("unhashable type: 'Arguments'")
+
+        def __eq__(self, other):
+            try:
+                return other.positional == self.positional and other.keywords == self.keywords
+            except AttributeError:
+                return False
+
+        def __iter__(self):
+            return self.positional.__iter__()
+
+        def __repr__(self):
+            return "Arguments(%r, %r)" % (self.positional, self.keywords)
+
+        def __getattr__(self, attr):
+            try:
+                return self.keywords[attr]
+            except KeyError:
+                raise AttributeError
+
+        def __getitem__(self, item):
+            try:
+                return self.positional[item]
+            except TypeError:
+                return self.keywords[item]
+
+    derp = Arguments((1, 2), dict(c=5, d=6))
+    a, b = derp
+    assert a == 1
+    assert b == 2
+    assert tuple(derp) == (1, 2)
+    assert derp.c == 5
+    assert derp.d == 6
+    assert derp["c"] == 5
+    assert derp["d"] == 6
+    assert derp[0] == 1
+    assert derp[1] == 2
+    with pytest.raises(KeyError):
+        derp["e"]
+    with pytest.raises(IndexError):
+        derp[4]
+    with pytest.raises(AttributeError):
+        derp.f

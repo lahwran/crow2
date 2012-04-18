@@ -33,8 +33,8 @@ fakeimplementeds = {
     float: IReal,
     str: IString,
     list: IList,
-    tuple: ITuple,
-    set: ISet
+    tuple: ITuple
+#    set: ISet
 }
 
 

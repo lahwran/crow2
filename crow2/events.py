@@ -8,7 +8,7 @@ from twisted.python.reflect import namedAny
 from twisted.python import log
 from collections import namedtuple, defaultdict
 
-from crow2.util import paramdecorator
+from crow2.util import paramdecorator, ExceptionWithMessage
 from crow2.toposort import topological_sort
 from crow2.adapterutil import adapter_for
 
@@ -19,7 +19,7 @@ def yielding(func):
     my own implementation of basically the same thing twisted.defer.inlineCallbacks does, except
     with crow2 goodness
 
-    note: if a yielded callback is garbage collected without being fired, then the generator
+    note: if a yielded hook is garbage collected without being fired, then the generator
     will be lost without continuing
     """
     @functools.wraps(func)
@@ -45,7 +45,19 @@ class IteratorCallbacks(object):
 
 
 
+class KeyAttributeCollisionError(ExceptionWithMessage):
+    """Key {1!r} collides with attribute of the same name on AttrDict it is set in """
+
 class AttrDict(dict):
+    """
+    Dict with it's values accessible as attributes
+    """
+    def __init__(self, *args, **keywords):
+        dict.__init__(self, *args, **keywords)
+        for key in self._static:
+            if key in self:
+                raise KeyAttributeCollisionError(dict(self), key)
+
     def __getattr__(self, name):
         try:
             return self[name]
@@ -55,8 +67,24 @@ class AttrDict(dict):
     def __setattr__(self, name, attr):
         self[name] = attr
 
+    def __setitem__(self, name, item):
+        if hasattr(self, name):
+            raise KeyAttributeCollisionError(dict(self), name)
+        dict.__setitem__(self, name, item)
+
     def __repr__(self):
         return "AttrDict(%s)" % super(AttrDict, self).__repr__() #pragma: no cover
+
+    @property
+    def _attributes(self):
+        try:
+            return self.__attributes
+        except AttributeError:
+            __attributes = set()
+            for parentclass in reversed(inspect.getmro(self.__class__)):
+                __attributes.add(parentclass.__dict__.keys())
+            self.__class__.__attributes = __attributes
+            return __attributes
 
 MethodRegistration = namedtuple("MethodRegistration", ["hook", "args", "keywords"])
 

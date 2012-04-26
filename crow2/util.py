@@ -78,3 +78,7 @@ class Enum(object):
 
     def __repr__(self):
         return "Enum(%r)" % self.name
+
+class ExceptionWithMessage(Exception):
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, self.__class__.__doc__.format(*args, **kwargs))

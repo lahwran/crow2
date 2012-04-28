@@ -10,6 +10,33 @@ class Counter(object):
     def tick(self):
         self.count += 1
 
+class TestYielding(object):
+    def test_simple(self):
+        hook1 = events.Hook()
+        hook2 = events.Hook()
+
+        @hook1
+        @events.yielding
+        def handler(event):
+            while "derp" in event:
+                event, = yield event.derp
+            event.was_called = True
+
+        assert "was_called" in hook1.fire()
+
+        assert not "was_called" in hook2.fire()
+
+#        import pdb; pdb.set_trace()
+        assert not "was_called" in hook1.fire(derp=hook2)
+        assert "was_called" in hook2.fire()
+
+        assert not "was_called" in hook2.fire()
+
+        assert not "was_called" in hook1.fire(derp=hook2)
+        assert not "was_called" in hook2.fire(derp=hook1)
+        assert not "was_called" in hook1.fire(derp=hook2)
+        assert "was_called" in hook2.fire()
+
 def test_class_reg_errors():
     hook = events.Hook()
     hook2 = events.Hook()
@@ -364,6 +391,7 @@ def test_attrdict():
     with pytest.raises(AttributeError):
         d.doesnotexis
 
+'''
 def test_idea():
     class Arguments(tuple):
         def _add_dict(self, d):
@@ -403,37 +431,7 @@ def test_other_idea():
     assert derp[1] == 2
 
 def test_somewhat_better_idea():
-    class Arguments(object):
-        def __init__(self, positional, keywords):
-            self.positional = tuple(positional)
-            self.keywords = dict(keywords)
 
-        def __hash__(self, other):
-            raise TypeError("unhashable type: 'Arguments'")
-
-        def __eq__(self, other):
-            try:
-                return other.positional == self.positional and other.keywords == self.keywords
-            except AttributeError:
-                return False
-
-        def __iter__(self):
-            return self.positional.__iter__()
-
-        def __repr__(self):
-            return "Arguments(%r, %r)" % (self.positional, self.keywords)
-
-        def __getattr__(self, attr):
-            try:
-                return self.keywords[attr]
-            except KeyError:
-                raise AttributeError
-
-        def __getitem__(self, item):
-            try:
-                return self.positional[item]
-            except TypeError:
-                return self.keywords[item]
 
     derp = Arguments((1, 2), dict(c=5, d=6))
     a, b = derp
@@ -451,4 +449,4 @@ def test_somewhat_better_idea():
     with pytest.raises(IndexError):
         derp[4]
     with pytest.raises(AttributeError):
-        derp.f
+        derp.f'''

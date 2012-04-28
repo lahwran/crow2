@@ -25,25 +25,81 @@ def yielding(func):
     @functools.wraps(func)
     def proxy(*args, **keywords):
         generator = func(*args, **keywords)
-        callback_manager = IteratorCallbacks(generator)
-        callback_manager.first()
+        callback_manager = IteratorCallbacks(generator, func)
         return callback_manager
     return proxy
 
-
+#class SingleCallbackHook(Interface):
+#    def __call__(callback):
+#        "register a callback to be called once"
 
 class IteratorCallbacks(object):
-    def __init__(self, iterator):
+    def __init__(self, iterator, callable):
         self.iterator = iterator
-        self.register_next()
+        self.callable = callable
+        self.call_position = 0
+        self.next()
 
-    def register_next(self):
-        pass
+    def next(self, to_send=None):
+        try:
+            if to_send == None:
+                yielded = self.iterator.next()
+            else:
+                yielded = self.iterator.send(to_send)
+        except StopIteration:
+            log.msg("generator stopping")
+        else:
+            callback = self.make_callback()
+            #hook = SingleCallback(yielded)
+            hook = yielded
+            hook.once(callback)
+    send = next
 
-    def callback(self, *args, **keywords):
-        pass
+    def make_callback(self):
+        'produce a callback which can only be called once'
+        next_call_position = self.call_position + 1
+        @functools.wraps(self.callable)
+        def callback(*args, **keywords):
+            self.call_position += 1
+            assert self.call_position == next_call_position
+
+            self.next(CallArguments(args, keywords))
+        callback.__name__ += "/%d" % next_call_position
+        return callback
 
 
+class CallArguments(object):
+    def __init__(self, positional, keywords, names=None):
+        self.positional = tuple(positional)
+        self.keywords = dict(keywords)
+
+    def __hash__(self, other):
+        raise TypeError("unhashable type: 'Arguments'")
+
+    def __eq__(self, other):
+        try:
+            return other.positional == self.positional and other.keywords == self.keywords
+        except AttributeError:
+            return False
+
+    def __iter__(self):
+        return self.positional.__iter__()
+
+    def __repr__(self):
+        return "Arguments(%r, %r)" % (self.positional, self.keywords)
+
+    def __getattr__(self, attr):
+        try:
+            return self.keywords[attr]
+        except KeyError:
+            raise AttributeError("No such attribute or named argument - did you try to use a "
+                                "single-arg callback, but forget to do `thisobject, = yield ...`?")
+
+    def __getitem__(self, item):
+        try:
+            return self.positional[item]
+        except TypeError:
+            return self.keywords[item]
 
 class KeyAttributeCollisionError(ExceptionWithMessage):
     """Key {1!r} collides with attribute of the same name on AttrDict it is set in """
@@ -54,9 +110,6 @@ class AttrDict(dict):
     """
     def __init__(self, *args, **keywords):
         dict.__init__(self, *args, **keywords)
-        for key in self._static:
-            if key in self:
-                raise KeyAttributeCollisionError(dict(self), key)
 
     def __getattr__(self, name):
         try:
@@ -67,24 +120,8 @@ class AttrDict(dict):
     def __setattr__(self, name, attr):
         self[name] = attr
 
-    def __setitem__(self, name, item):
-        if hasattr(self, name):
-            raise KeyAttributeCollisionError(dict(self), name)
-        dict.__setitem__(self, name, item)
-
     def __repr__(self):
         return "AttrDict(%s)" % super(AttrDict, self).__repr__() #pragma: no cover
-
-    @property
-    def _attributes(self):
-        try:
-            return self.__attributes
-        except AttributeError:
-            __attributes = set()
-            for parentclass in reversed(inspect.getmro(self.__class__)):
-                __attributes.add(parentclass.__dict__.keys())
-            self.__class__.__attributes = __attributes
-            return __attributes
 
 MethodRegistration = namedtuple("MethodRegistration", ["hook", "args", "keywords"])
 

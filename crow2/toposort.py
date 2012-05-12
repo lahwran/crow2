@@ -1,8 +1,10 @@
-# from http://blog.jupo.org/2012/04/06/topological-sorting-acyclic-directed-graphs/
-# slightly modified, used with permission
+"""
+from http://blog.jupo.org/2012/04/06/topological-sorting-acyclic-directed-graphs/
+slightly modified, used with permission
+"""
 
 class CyclicDependencyError(Exception):
-    pass
+    "Raised when there is an unresolvable dependency loop"
 
 def topological_sort(graph_unsorted):
     """

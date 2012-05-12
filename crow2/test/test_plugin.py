@@ -1,19 +1,28 @@
+"""
+Tests for crow2.plugin
+"""
 import sys
-import time
 
 import pytest
 
 import crow2.plugin
+import crow2.test.setup
 
 
 ids = ("1", "B", "Z")
 
 def create(path):
-    f = path.open("w")
-    f.write("")
-    f.close()
+    """
+    Create 
+    """
+    writer = path.open("w")
+    writer.write("")
+    writer.close()
 
 def test_listpackage(tmpdir, monkeypatch):
+    """
+    Test that listpackage is able to accurately detect various kinds of python files
+    """
     packagename = "test_listpackage_package"
     packagepath = tmpdir.join(packagename)
     children = set("child" + id for id in ids)
@@ -32,7 +41,11 @@ def test_listpackage(tmpdir, monkeypatch):
     del sys.modules[packagename]
     assert result == children
 
-def test_getmodulename(tmpdir, monkeypatch):
+def test_getmodulename(tmpdir):
+    """
+    Test that getmodulename can accurately determine a module's python name from
+    its filename.
+    """
     packagename = "test_getmodulename_package"
     packagepath = tmpdir.join(packagename)
     children = set(("child" + id, suffix) for suffix in crow2.plugin.suffixes
@@ -63,11 +76,23 @@ def test_getmodulename(tmpdir, monkeypatch):
         assert result == None
 
 def test_moduleloader():
+    """
+    Test that the module loader is able to load individual modules
+    (it can't yet)
+    """
     moduleloader = crow2.plugin.ModuleLoader("filename")
+    assert moduleloader
+    assert not "left unfinished"
 
 
 class TestPackageLoader(object):
+    """
+    Tests for the loader which loads all the modules in a package
+    """
     def test_repr(self, tmpdir):
+        """
+        Tests that repr gives useful information. I'm only testing this because I'm an idiot about 100% test coverage.
+        """
         packagename = "test_packageloader_repr_package"
         packagepath = tmpdir.join(packagename)
         packagepath.mkdir()
@@ -84,12 +109,18 @@ class TestPackageLoader(object):
         assert name in stred
 
     def stub(self, path, name, reloaded):
-        f = path.open("w")
-        f.write("myname = %r\n" % name)
-        f.write("reloaded = %r\n" % reloaded)
-        f.close()
+        """
+        generate a stub module with attributes that can be checked for
+        """
+        writer = path.open("w")
+        writer.write("myname = %r\n" % name)
+        writer.write("reloaded = %r\n" % reloaded)
+        writer.close()
 
     def test_loader(self, tmpdir, monkeypatch):
+        """
+        Test that the loader can load and reload modules
+        """
         packagename = "test_packageloader_loader_package"
         packagepath = tmpdir.join(packagename)
         children = set("child" + id for id in ids)

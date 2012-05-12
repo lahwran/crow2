@@ -7,16 +7,40 @@ import inspect
 import functools
 
 def paramdecorator(decorator_func):
-    if inspect.getargspec(decorator_func).args[0] == "self":
+    """
+    Paramater-taking decorator-decorator; That is, decorate a function with this to make it into a paramater-decorator
+
+    Use of the paramdecorator decorator:
+
+    Takes no special arguments; simply call as @paramdecorator. The first non-'self' argument of the decorated function
+    will be passed the function or class that the produced decorator is used to decorate. The first non-self argument
+    can also be passed as a keyword argument to the returned decorator, which will make it behave like a normal function.
+    for this reason it is strongly recommended that you name your first argument "target", "func", or "clazz"
+    (depending on what you accept).
+
+    Use of produced parameter decorators:
+
+    The produced decorator can be called either as @decorator with no arguments, or @decorator() with any arguments.
+    When called with only a builtin-type callable as an argument (as in the case of @decorator), it will assume
+    that it is being called with no arguments. When called with more arguments or when the first argument is not
+    a callable, it will assume it is being called with multiple arguments and return a closure'd decorator.
+
+    If you wish to force a parameter decorator to take the target function or class in the same call as arguments,
+    then give it a keyword argument of the function's target name.
+    """
+    args = inspect.getargspec(decorator_func).args
+    if args[0] == "self":
         arg_target = 1
     else:
         arg_target = 0
+    funcname = args[arg_target]
     @functools.wraps(decorator_func)
     def meta_decorated(*args, **keywords):
-        if "func" in keywords:
+        "I'm tired of providing nonsense docstrings to functools.wrapped functions just to shut pylint up"
+        if funcname in keywords:
             # a way for callers to force a normal function call
-            func = keywords["func"]
-            del keywords["func"]
+            func = keywords[funcname]
+            del keywords[funcname]
             newargs = list(args)
             newargs.insert(arg_target, func)
             return decorator_func(*newargs, **keywords)
@@ -30,6 +54,7 @@ def paramdecorator(decorator_func):
         else: # called as an argument decorator
             @functools.wraps(decorator_func)
             def decorator_return(func):
+                "shut up, pylint - don't you know what functools.wraps does?"
                 newargs = list(args)
                 newargs.insert(arg_target, func)
                 return decorator_func(*newargs, **keywords)
@@ -47,6 +72,7 @@ def deprecated(func, reason="deprecated"):
     """
     @functools.wraps(func)
     def new_func(*args, **kwargs):
+        'shut up, pylint'
         warnings.warn_explicit("Call to deprecated function %s: %s." % (func.__name__, reason),
                       category=DeprecationWarning,
                       filename=func.func_code.co_filename,
@@ -54,6 +80,7 @@ def deprecated(func, reason="deprecated"):
         return func(*args, **kwargs)
     return new_func
 
+'''
 class EnumElement(object):
     def __init__(self, owner, index, name):
         self.index = index
@@ -78,7 +105,16 @@ class Enum(object):
 
     def __repr__(self):
         return "Enum(%r)" % self.name
+'''
 
 class ExceptionWithMessage(Exception):
+    """
+    Subclass this class and provide a docstring; the docstring will be
+    formatted with the __init__ args and then used as the error
+
+    (if you are seeing this as a result of an exception, someone - possibly you  - forgot
+        to provide a subclass with a docstring!)
+    """
     def __init__(self, *args, **kwargs):
+        assert self.__class__ != ExceptionWithMessage
         Exception.__init__(self, self.__class__.__doc__.format(*args, **kwargs))

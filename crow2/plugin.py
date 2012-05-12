@@ -1,15 +1,18 @@
+"""
+Plugin loading/unloading utilities
+"""
+
 import imp
 import os
 import sys
-import pprint
 
 from twisted.python.reflect import namedModule
 
-class AlreadyLoadedError(Exception):
-    pass
+class AlreadyLoadedError(Exception): #TODO: these exceptions are duplicated in crow2.events
+    "Trying to load when already loaded"
 
 class NotLoadedError(Exception):
-    pass
+    "Trying to unload when not loaded"
 
 
 class PackageLoader(object):
@@ -23,6 +26,9 @@ class PackageLoader(object):
         self.name = name
 
     def load(self):
+        """
+        Load all modules in the package that this packageloader is in charge of
+        """
         if self.loaded:
             raise AlreadyLoadedError(repr(self))
         self.plugins = []
@@ -37,6 +43,9 @@ class PackageLoader(object):
         # that was easy
 
     def unload(self):
+        """
+        unload all modules we have loaded
+        """
         if not self.loaded:
             raise NotLoadedError(repr(self))
         for name in dict(sys.modules):
@@ -54,11 +63,15 @@ class PackageLoader(object):
         return "Package %r: %s" % (self.package, self.name)
 
 class ModuleLoader(object):
+    "TODO: loads an individual module"
     def __init__(self, filename):
         pass
 
 suffixes = set([info[0] for info in imp.get_suffixes()])
 def getmodulename(parent, filename):
+    """
+    Get the name of a module based on it's filename
+    """
     for suffix in suffixes:
         if filename.endswith(suffix):
             return filename[:-len(suffix)] # remove ending
@@ -70,6 +83,9 @@ def getmodulename(parent, filename):
                     return filename
 
 def listpackage(name):
+    """
+    List the children of a package
+    """
     parent = namedModule(name)
     results = set()
     for package_path in parent.__path__:

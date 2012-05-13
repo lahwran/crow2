@@ -9,7 +9,7 @@ class TestParamdecorator(object):
     """
     Test @paramdecorator in various ways
     """
-    def test_paramdecorator_simple(self):
+    def test_simple(self):
         """
         A simple test to make sure that paramdecorator works on a no-argument decorator
         """
@@ -36,7 +36,7 @@ class TestParamdecorator(object):
                 "stub to decorate"
                 pass
 
-    def test_paramdecorator_requiredarg(self):
+    def test_requiredarg(self):
         """
         Test that paramdecorator produces a decorator with one required arg out of
         a function with a func arg and a required arg
@@ -72,7 +72,7 @@ class TestParamdecorator(object):
         assert lastrun[1] is somearg
 
 
-    def test_paramdecorator_optionalarg(self):
+    def test_optionalarg(self):
         """
         Test that an optional argument behaves as expected.
         Additionally, test that self detection and method binding works as expected.
@@ -126,7 +126,7 @@ class TestParamdecorator(object):
                 "stub to decorate"
                 pass
 
-    def test_paramdecorator_quirks(self):
+    def test_quirks(self):
         """
         Test that known paramdecorator quirks misbehave as expected
         """
@@ -154,3 +154,70 @@ class TestParamdecorator(object):
             return "func"
         assert successful_func == "funcfunc2"
         assert lastrun[1] is func2
+
+    def test_argnum(self):
+        thing1_sentinel = object()
+        thing2_sentinel = object()
+        @crow2.util.paramdecorator(argnum=2)
+        def with_args(thing1, thing2, func):
+            assert thing1 is thing1_sentinel
+            assert thing2 is thing2_sentinel
+            assert func
+
+        @with_args(thing1_sentinel, thing2_sentinel)
+        def afunc_1():
+            pass
+
+        @crow2.util.paramdecorator(argnum=1, argname="function")
+        def with_undetectable_args(*args):
+            thing1, func, thing2 = args
+            assert thing1 is thing1_sentinel
+            assert thing2 is thing2_sentinel
+            assert func
+
+        @with_undetectable_args(thing1_sentinel, thing2_sentinel)
+        def afunc_2():
+            pass
+
+        def newfunc():
+            pass
+        with_undetectable_args(thing1_sentinel, thing2_sentinel, function=newfunc)
+
+        @crow2.util.paramdecorator(argname="target")
+        def with_named_target(thing1, thing2, target):
+            assert thing1 is thing1_sentinel
+            assert thing2 is thing2_sentinel
+            assert target
+
+        @with_named_target(thing1_sentinel, thing2_sentinel)
+        def afunc_3():
+            pass
+
+        
+        @crow2.util.paramdecorator(argname="target")
+        def only_named_target(target):
+            assert target
+
+        @only_named_target
+        def afunc_4():
+            pass
+
+        class Derp(object):
+            @crow2.util.paramdecorator(useself=True)
+            def method_decorator(nonstandard_self, target):
+                assert nonstandard_self.__class__ is Derp
+                assert target
+
+        herp = Derp()
+        @herp.method_decorator
+        def afunc_5():
+            pass
+
+        with pytest.raises(Exception):
+            @crow2.util.paramdecorator(useself=False, argnum=0)
+            def conflicting_target_id():
+                pass
+        with pytest.raises(Exception):
+            @crow2.util.paramdecorator(argname="nonexistant")
+            def nonexistant_target(target):
+                pass

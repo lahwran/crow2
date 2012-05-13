@@ -7,21 +7,15 @@ import inspect
 import functools
 
 class DecoratorPartial(object):
-    def __init__(self, func, isname, identifier, *args, **keywords):
+    def __init__(self, func, argnum, args, keywords):
         self.func = func
-        self.args = args or None
-        self.keywords = keywords or None
-        self.isname = isname
-        self.identifier = identifier
+        self.args = args
+        self.keywords = keywords
+        self.argnum = argnum
 
     def __call__(self, target):
-        args = self.args
+        args = self.args[:self.argnum] + (target,) + self.args[self.argnum:]
         keywords = self.keywords
-        if self.isname:
-            keywords = dict(keywords, **{self.identifier: target})
-        else:
-            if self.args is not None:
-                args = args[:self.identifier] + [target] + args[self.identifier:]
 
         return self.func(*args, **keywords)
 
@@ -52,6 +46,7 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
     then give it a keyword argument of the function's target name.
 
     Note: if the decorated decorator uses *args, you must provide argname and optionally one of argnum or useself.
+    argname may only be used on its own when the function will accept the target as a kwarg.
     """
     if useself is not None:
         if argnum is not None:
@@ -66,33 +61,40 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
             argnum = 0
         argname = args[argnum]
     elif argnum is not None and argname is None:
+        args = inspect.getargspec(decorator_func).args
         argname = args[argnum]
     #elif argnum is not none and argname is not none:
     #    both provided; use argnum and splicing
-    #elif argnum is None and argname is not None:
-    #    only argname provided; use kwarg insertion
+    elif argnum is None and argname is not None:
+        args = inspect.getargspec(decorator_func).args
+        for index, name in enumerate(args):
+            if name == argname:
+                argnum = index
+                break
+        else:
+            raise Exception("argname must point to an arg that exists")
+ 
+    assert argnum is not None
+
+    makepartial = functools.partial(DecoratorPartial, decorator_func, argnum)
 
     @functools.wraps(decorator_func)
     def meta_decorated(*args, **keywords):
         "I'm tired of providing nonsense docstrings to functools.wrapped functions just to shut pylint up"
         if argname in keywords:
-            # a way for callers to force a normal function call
-            return decorator_func(*newargs, **keywords)
+            # a way for callers to force a 'normal' function call
+            arg = keywords[argname]
+            del keywords[argname]
+            preparer = makepartial(args, keywords)
+            return preparer(arg)
 
         # called as a simple decorator
         if (len(args) == argnum+1 and
             (inspect.isfunction(args[argnum]) or inspect.isclass(args[argnum]))
             and len(keywords) == 0):
             return decorator_func(*args)
-
         else: # called as an argument decorator
-            if argnum:
-                identifier = argnum
-                isname = False
-            else:
-                identifier = argname
-                isname = True
-            return DecoratorPartial(decorator_func, isname, identifier, *args, **keywords)
+            return makepartial(args, keywords)
     meta_decorated.undecorated = decorator_func
     return meta_decorated
 paramdecorator = paramdecorator(paramdecorator) # we are ourselves!

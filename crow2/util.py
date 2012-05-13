@@ -6,7 +6,30 @@ import warnings
 import inspect
 import functools
 
-def paramdecorator(decorator_func):
+class DecoratorPartial(object):
+    def __init__(self, func, isname, identifier, *args, **keywords):
+        self.func = func
+        self.args = args or None
+        self.keywords = keywords or None
+        self.isname = isname
+        self.identifier = identifier
+
+    def __call__(self, target):
+        args = self.args
+        keywords = self.keywords
+        if self.isname:
+            keywords = dict(keywords, **{self.identifier: target})
+        else:
+            if self.args is not None:
+                args = args[:self.identifier] + [target] + args[self.identifier:]
+
+        return self.func(*args, **keywords)
+
+    def __repr__(self):
+        return "DecoratorPartial(func=%r, isname=%r, identifier=%r, *%r, **%r)" % (self.func, self.isname, self.identifier,
+                                            self.args, self.keywords)
+
+def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
     """
     Paramater-taking decorator-decorator; That is, decorate a function with this to make it into a paramater-decorator
 
@@ -27,40 +50,52 @@ def paramdecorator(decorator_func):
 
     If you wish to force a parameter decorator to take the target function or class in the same call as arguments,
     then give it a keyword argument of the function's target name.
+
+    Note: if the decorated decorator uses *args, you must provide argname and optionally one of argnum or useself.
     """
-    args = inspect.getargspec(decorator_func).args
-    if args[0] == "self":
-        arg_target = 1
-    else:
-        arg_target = 0
-    funcname = args[arg_target]
+    if useself is not None:
+        if argnum is not None:
+            raise Exception("useself and argnum both do the same thing; they cannot be used at the same time")
+        argnum = 1 if useself else 0
+
+    if argnum is None and argname is None:
+        args = inspect.getargspec(decorator_func).args
+        if args[0] == "self":
+            argnum = 1
+        else:
+            argnum = 0
+        argname = args[argnum]
+    elif argnum is not None and argname is None:
+        argname = args[argnum]
+    #elif argnum is not none and argname is not none:
+    #    both provided; use argnum and splicing
+    #elif argnum is None and argname is not None:
+    #    only argname provided; use kwarg insertion
+
     @functools.wraps(decorator_func)
     def meta_decorated(*args, **keywords):
         "I'm tired of providing nonsense docstrings to functools.wrapped functions just to shut pylint up"
-        if funcname in keywords:
+        if argname in keywords:
             # a way for callers to force a normal function call
-            func = keywords[funcname]
-            del keywords[funcname]
-            newargs = list(args)
-            newargs.insert(arg_target, func)
             return decorator_func(*newargs, **keywords)
 
         # called as a simple decorator
-        if (len(args) == arg_target+1 and
-            (inspect.isfunction(args[arg_target]) or inspect.isclass(args[arg_target]))
+        if (len(args) == argnum+1 and
+            (inspect.isfunction(args[argnum]) or inspect.isclass(args[argnum]))
             and len(keywords) == 0):
             return decorator_func(*args)
 
         else: # called as an argument decorator
-            @functools.wraps(decorator_func)
-            def decorator_return(func):
-                "shut up, pylint - don't you know what functools.wraps does?"
-                newargs = list(args)
-                newargs.insert(arg_target, func)
-                return decorator_func(*newargs, **keywords)
-            return decorator_return
+            if argnum:
+                identifier = argnum
+                isname = False
+            else:
+                identifier = argname
+                isname = True
+            return DecoratorPartial(decorator_func, isname, identifier, *args, **keywords)
     meta_decorated.undecorated = decorator_func
     return meta_decorated
+paramdecorator = paramdecorator(paramdecorator) # we are ourselves!
 
 @paramdecorator
 def deprecated(func, reason="deprecated"):

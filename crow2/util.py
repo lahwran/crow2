@@ -5,6 +5,7 @@ A dropbox for uncategorized utility code that doesn't belong anywhere else.
 import warnings
 import inspect
 import functools
+from zope.interface import implementer
 
 class DecoratorPartial(object):
     def __init__(self, func, argnum, args, keywords):
@@ -63,8 +64,6 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
     elif argnum is not None and argname is None:
         args = inspect.getargspec(decorator_func).args
         argname = args[argnum]
-    #elif argnum is not none and argname is not none:
-    #    both provided; use argnum and splicing
     elif argnum is None and argname is not None:
         args = inspect.getargspec(decorator_func).args
         for index, name in enumerate(args):
@@ -73,6 +72,9 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
                 break
         else:
             raise Exception("argname must point to an arg that exists")
+    else:
+        pass # if both are provided, we're good
+    
  
     assert argnum is not None
 
@@ -98,6 +100,20 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
     meta_decorated.undecorated = decorator_func
     return meta_decorated
 paramdecorator = paramdecorator(paramdecorator) # we are ourselves!
+
+@paramdecorator(argname="method_func", argnum=0)
+class MethodImplementer(object):
+    def __init__(self, method_func, *interfaces):
+        self.method_func = method_func
+        functools.update_wrapper(self, method_func)
+        self.make_implement = implementer(*interfaces)
+
+    def __get__(self, instance, owner):
+        result = self.method_func.__get__(instance, owner)
+        return self.make_implement(result)
+
+    def __call__(self, *args, **keywords):
+        raise TypeError("MethodImplementer for method %r cannot be called directly" % (self.method_func))
 
 @paramdecorator
 def deprecated(func, reason="deprecated"):
@@ -155,3 +171,25 @@ class ExceptionWithMessage(Exception):
     def __init__(self, *args, **kwargs):
         assert self.__class__ != ExceptionWithMessage
         Exception.__init__(self, self.__class__.__doc__.format(*args, **kwargs))
+
+class KeyAttributeCollisionError(ExceptionWithMessage):
+    """Key {1!r} collides with attribute of the same name on AttrDict it is set in """
+
+class AttrDict(dict):
+    """
+    Dict with it's values accessible as attributes
+    """
+    def __init__(self, *args, **keywords):
+        dict.__init__(self, *args, **keywords)
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError
+
+    def __setattr__(self, name, attr):
+        self[name] = attr
+
+    def __repr__(self):
+        return "AttrDict(%s)" % super(AttrDict, self).__repr__() #pragma: no cover

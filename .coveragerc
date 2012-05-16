@@ -2,3 +2,6 @@
 exclude_lines = 
     pass
 	pragma: no cover
+
+[run]
+branch = True

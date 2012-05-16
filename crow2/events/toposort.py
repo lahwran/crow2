@@ -3,8 +3,7 @@ from http://blog.jupo.org/2012/04/06/topological-sorting-acyclic-directed-graphs
 slightly modified, used with permission
 """
 
-class CyclicDependencyError(Exception):
-    "Raised when there is an unresolvable dependency loop"
+from .exceptions import CyclicDependencyError
 
 def topological_sort(graph_unsorted):
     """

@@ -221,3 +221,12 @@ class TestParamdecorator(object):
             @crow2.util.paramdecorator(argname="nonexistant")
             def nonexistant_target(target):
                 pass
+
+def test_attrdict():
+    attrdict = crow2.util.AttrDict()
+    attrdict.blah = 1
+    assert attrdict.blah
+    assert attrdict == {"blah": 1}
+    with pytest.raises(AttributeError):
+        assert attrdict.doesnotexis
+

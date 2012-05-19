@@ -13,7 +13,7 @@ def test_simple():
     def handler(event):
         "yielding handler"
         while "derp" in event:
-            event, = yield event.derp
+            event = yield event.derp
         event.was_called = True
 
     assert handler #shut up, pylint
@@ -40,4 +40,3 @@ def test_simple():
     # aaand, call without arguments. are you still there, handler?
     assert "was_called" in hook2.fire()
     # if we got here, yep!
-

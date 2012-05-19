@@ -94,6 +94,44 @@ class MethodRegistration(object):
         self.args = args
         self.keywords = keywords
 
+class IHook(Interface):
+    def register(target, **keywords):
+        """
+        Register a callable to be called by this hook.
+        The callable must take at least one argument and
+        have no more than one required arguments.
+        """
+    def register_once(target, **keywords):
+        """
+        Register a callable to be called by this hook and then unregistered
+        """
+    def register_method(target, **keywords):
+        """
+        Add a registration to a target method such that it can be detected by ClassRegistration
+        """
+    def unregister(target):
+        """
+        Unregister a callable from this hook
+        """
+    def fire(*contexts, **arguments):
+        """
+        Call all handlers associated with this hook.
+        Each positional argument must be a dictionary; each
+        keyword argument is added to any dictionaries to form the
+        event passed into the handlers.
+        """
+
+class IPartialHook(Interface):
+    func = Attribute("the method-function which this partial is for")
+    args = Attribute("the list of arguments passed to create partial. 0 is self.")
+    def __call__(target):
+        """
+        Complete registration with this target
+        """
+    def copy():
+        "Return a full copy of this partial"
+
+@implementer(IHook)
 class BaseHook(object):
     """
     Contains the registration methods that are called to register a hook
@@ -103,9 +141,6 @@ class BaseHook(object):
     before you start subclassing; a lot is already provided.
     """
     def __init__(self, default_tags=()):
-
-    ### Firing ------------------------------------------
-
         self.sorted_call_list = None
         self.handler_references = {}
         self.references = {}
@@ -129,21 +164,21 @@ class BaseHook(object):
 
         if self.sorted_call_list == None:
             self._toposort, self.sorted_call_list = self._build_call_list(self.registration_groups)
-        callargs, callkeywords = self._make_callargs(*args, **keywords)
-        self._fire_call_list(self.sorted_call_list, *callargs, **callkeywords)
+        event = self._make_eventobj(*args, **keywords)
+        self._fire_call_list(self.sorted_call_list, event)
 
-        return callargs[0]
+        return event
 
-    def _make_callargs(self, *dicts, **keywords):
+    def _make_eventobj(self, *dicts, **keywords):
         """
         Prepare the objects which will be passed into handlers
         """
-        calldict = AttrDict()
+        event = AttrDict()
         for context_dict in dicts:
-            calldict.update(context_dict)
-        calldict.update(keywords)
-        calldict.update({"calling_hook": self})
-        return (calldict,), {}
+            event.update(context_dict)
+        event.update(keywords)
+        event.update({"calling_hook": self})
+        return event
 
     def _fire_call_list(self, calllist, *args, **keywords):
         """
@@ -374,7 +409,7 @@ class BaseHook(object):
     # these two are separate so that overriding register_* in subclasses will work as expected
     # they need to be separate attributes because paramdecorator-ized funcs behave very unexpectedly
     # when called as normal functions
-    @paramdecorator
+    @paramdecorator(partialiface=IPartialHook)
     def __call__(self, func, *args, **keywords):
         """
         Decorator version of register()

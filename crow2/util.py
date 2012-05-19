@@ -5,14 +5,18 @@ A dropbox for uncategorized utility code that doesn't belong anywhere else.
 import warnings
 import inspect
 import functools
-from zope.interface import implementer
+from zope.interface import alsoProvides
 
 class DecoratorPartial(object):
-    def __init__(self, func, argnum, args, keywords):
+    def __init__(self, func, argnum, partialiface, args, keywords):
         self.func = func
         self.args = args
         self.keywords = keywords
         self.argnum = argnum
+        if partialiface:
+            alsoProvides(self, partialiface)
+        self.partialiface = partialiface
+
 
     def __call__(self, target):
         args = self.args[:self.argnum] + (target,) + self.args[self.argnum:]
@@ -24,7 +28,10 @@ class DecoratorPartial(object):
         return "DecoratorPartial(func=%r, isname=%r, identifier=%r, *%r, **%r)" % (self.func, self.isname, self.identifier,
                                             self.args, self.keywords)
 
-def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
+    def copy(self):
+        return DecoratorPartial(self.func, self.argnum, self.partialiface, self.args, self.keywords)
+
+def paramdecorator(decorator_func, argname=None, argnum=None, useself=None, partialiface=None):
     """
     Paramater-taking decorator-decorator; That is, decorate a function with this to make it into a paramater-decorator
 
@@ -78,7 +85,7 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
  
     assert argnum is not None
 
-    makepartial = functools.partial(DecoratorPartial, decorator_func, argnum)
+    makepartial = functools.partial(DecoratorPartial, decorator_func, argnum, partialiface)
 
     @functools.wraps(decorator_func)
     def meta_decorated(*args, **keywords):
@@ -102,18 +109,19 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None):
 paramdecorator = paramdecorator(paramdecorator) # we are ourselves!
 
 @paramdecorator(argname="method_func", argnum=0)
-class MethodImplementer(object):
+class MethodProvides(object):
     def __init__(self, method_func, *interfaces):
         self.method_func = method_func
         functools.update_wrapper(self, method_func)
-        self.make_implement = implementer(*interfaces)
+        self.interfaces = interfaces
 
     def __get__(self, instance, owner):
         result = self.method_func.__get__(instance, owner)
-        return self.make_implement(result)
+        self.alsoProvides(result, *self.interfaces)
+        return result
 
     def __call__(self, *args, **keywords):
-        raise TypeError("MethodImplementer for method %r cannot be called directly" % (self.method_func))
+        raise TypeError("MethodProvides for method %r cannot be called directly" % (self.method_func))
 
 @paramdecorator
 def deprecated(func, reason="deprecated"):

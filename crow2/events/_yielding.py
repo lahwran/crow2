@@ -1,6 +1,10 @@
 import functools
 from twisted.python import log
-from crow2.util import paramdecorator
+from twisted.internet.defer import Deferred
+from crow2.util import paramdecorator, DecoratorPartial
+from zope.interface import Interface, Attribute, implementer
+from crow2.adapterutil import adapter_for
+from crow2.events._base import IHook, IPartialHook
 
 @paramdecorator
 def yielding(func):
@@ -18,6 +22,27 @@ def yielding(func):
         callback_manager = _IteratorCallbacks(generator, func)
         return callback_manager
     return proxy
+
+class IYieldedCallback(Interface):
+    def __call__(target):
+        """
+        register a handler to be called once
+        """
+
+@adapter_for(Deferred, IYieldedCallback)
+def adapt_deferred(deferred):
+    return deferred.addCallback
+
+@adapter_for(IHook, IYieldedCallback)
+def adapt_hook(hook):
+    return hook.once
+
+@adapter_for(IPartialHook, IYieldedCallback)
+def adapt_partial_hook(partial):
+    partial = partial.copy()
+    hook = partial.args[0].__class__
+    partial.func = hook.register_once.im_func
+    return partial
 
 class _IteratorCallbacks(object):
     """
@@ -40,61 +65,19 @@ class _IteratorCallbacks(object):
             log.msg("generator stopping")
         else:
             callback = self.make_callback()
-            #hook = SingleCallback(yielded)
-            hook = yielded
-            hook.once(callback)
+            hook = IYieldedCallback(yielded)
+            hook(callback)
     send = next
 
     def make_callback(self):
         "produce a callback which can only be called once"
         next_call_position = self.call_position + 1
         @functools.wraps(self.factory)
-        def callback(*args, **keywords):
+        def callback(event):
             "callback which will check that it's called at the right time"
             self.call_position += 1
             assert self.call_position == next_call_position
 
-            self.next(CallArguments(args, keywords))
+            self.next(event)
         callback.__name__ += "/%d" % next_call_position # pylint: disable=E1101
         return callback
-
-class CallArguments(object):
-    """
-    Represents the arguments of a call such that they can be accessed in a familiar way
-
-    allows accessing keyword arguments as attributes and items; allows accessing positional arguments
-    as items.
-    """
-    def __init__(self, positional, keywords): #, names=None):
-        #TODO: allow yielding of naming information to simulate a function definition
-        self.positional = tuple(positional)
-        self.keywords = dict(keywords)
-
-    def __hash__(self, other):
-        raise TypeError("unhashable type: 'Arguments'")
-
-    def __eq__(self, other):
-        try:
-            return other.positional == self.positional and other.keywords == self.keywords
-        except AttributeError:
-            return False
-
-    def __iter__(self):
-        return self.positional.__iter__()
-
-    def __repr__(self):
-        return "Arguments(%r, %r)" % (self.positional, self.keywords)
-
-    def __getattr__(self, attr):
-        try:
-            return self.keywords[attr]
-        except KeyError:
-            raise AttributeError("No such attribute or named argument - did you try to use a "
-                                "single-arg callback, but forget to do `thisobject, = yield ...`?")
-
-    def __getitem__(self, item):
-        try:
-            return self.positional[item]
-        except TypeError:
-            return self.keywords[item]
-

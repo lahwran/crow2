@@ -322,3 +322,10 @@ yield handlers
                 really allow anything like this
             - we really need zope.interface - this is the perfect scenario for adapters
 
+
+
+---------------
+
+- cancellablehook
+- child calls
+- 

@@ -34,12 +34,19 @@ class PackageLoader(object):
         self.plugins = []
 
         sys.dont_write_bytecode, olddwbc = True, sys.dont_write_bytecode
-        names = listpackage(self.package)
-        for name in names:
-            plugin = namedModule(self.package + "." + name)
-            self.plugins.append(plugin)
-        self.loaded = True
-        sys.dont_write_bytecode = olddwbc
+        try:
+            try:
+                names = listpackage(self.package)
+            except ImportError:
+                print "did you forget to add an __init__.py?"
+                raise
+
+            for name in names:
+                plugin = namedModule(self.package + "." + name)
+                self.plugins.append(plugin)
+            self.loaded = True
+        finally:
+            sys.dont_write_bytecode = olddwbc
         # that was easy
 
     def unload(self):

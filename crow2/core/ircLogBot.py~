@@ -1,0 +1,21 @@
+from crow2 import hook
+
+@hook.init
+def init(event):
+    import sys
+    from twisted.python import log
+    log.startLogging(sys.stdout)
+
+    
+
+@hook.mainloop
+def mainloop(event):
+    from twisted.internet import reactor
+    reactor.run()
+
+@hook.stopmainloop
+def reactorquit(event):
+    if event.exitcode > 64:
+        reactor.crash()
+    else:
+        reactor.stop()

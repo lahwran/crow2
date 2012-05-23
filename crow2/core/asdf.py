@@ -1,5 +1,5 @@
 
-
+'''
 from crow2 import hook
 
 @hook.instantiate
@@ -23,4 +23,4 @@ def somefunc():
 @hook.category.OTHERHOOK(before="crow2.core.asdf.somefunc")
 @
 
-
+'''

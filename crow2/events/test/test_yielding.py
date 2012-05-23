@@ -1,12 +1,12 @@
-from crow2.events._base import BaseHook
+from crow2.events._base import DecoratorHook
 from crow2.events._yielding import yielding
 
 def test_simple():
     """
     "Simple" test of yielding
     """
-    hook1 = BaseHook()
-    hook2 = BaseHook()
+    hook1 = DecoratorHook()
+    hook2 = DecoratorHook()
 
     @hook1
     @yielding

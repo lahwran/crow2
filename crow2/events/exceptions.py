@@ -25,4 +25,3 @@ class AlreadyRegisteredError(Exception):
 
 class CyclicDependencyError(Exception):
     "Raised when there is an unresolvable dependency loop"
-

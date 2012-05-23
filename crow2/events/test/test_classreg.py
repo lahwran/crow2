@@ -1,11 +1,11 @@
 from crow2.events import exceptions
-from crow2.events._base import BaseHook
+from crow2.events._base import DecoratorHook
 from crow2.events._classreg import ClassRegistration, MethodProxy, ClassregHookMixin
 from crow2.test.testutil import Counter
 import crow2.test.setup # pylint: disable = W0611
 import pytest
 
-class MixedHook(BaseHook, ClassregHookMixin):
+class MixedHook(DecoratorHook, ClassregHookMixin):
     pass
 
 def test_class_reg_errors():

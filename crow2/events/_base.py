@@ -121,7 +121,17 @@ class IHook(Interface):
         event passed into the handlers.
         """
 
-class IPartialHook(Interface):
+class IDecoratorHook(IHook): # pragma: no cover
+    def __call__(**keywords):
+        "Create an IPartialHook for register()"
+
+    def once(**keywords):
+        "Create a partial for register_once()"
+
+    def method(**keywords):
+        "Create a partial for register_method()"
+
+class IPartialRegistration(Interface):
     func = Attribute("the method-function which this partial is for")
     args = Attribute("the list of arguments passed to create partial. 0 is self.")
     def __call__(target):
@@ -180,17 +190,17 @@ class BaseHook(object):
         event.update({"calling_hook": self})
         return event
 
-    def _fire_call_list(self, calllist, *args, **keywords):
+    def _fire_call_list(self, calllist, event):
         """
         actually call all the handlers in our call list
         """
         # TODO: exception handling
         # TODO: cancel-handling hook subclass
         for handler in calllist:
-            #try:
-            handler(*args, **keywords)
-            #except:
-            #    log.err()
+            try:
+                handler(event)
+            except:
+                log.err()
                 # derp, what now
 
     ### Baking/fire preparation -------------------------
@@ -323,6 +333,7 @@ class BaseHook(object):
         """
         Register an object as a handler, with any keywords you might like
         """
+        # Note: keywords.get is used because register(func, "name") would be ambiguous
         before = self._ensure_list(keywords.get("before", tuple()))
         after = self._ensure_list(keywords.get("after", tuple()))
         tag = keywords.get("tag", None)
@@ -405,11 +416,8 @@ class BaseHook(object):
 
         self.sorted_call_list = None
 
-
-    # these two are separate so that overriding register_* in subclasses will work as expected
-    # they need to be separate attributes because paramdecorator-ized funcs behave very unexpectedly
-    # when called as normal functions
-    @paramdecorator(partialiface=IPartialHook)
+class DecoratorMixin(object):
+    @paramdecorator(partialiface=IPartialRegistration)
     def __call__(self, func, *args, **keywords):
         """
         Decorator version of register()
@@ -443,3 +451,28 @@ class BaseHook(object):
         method_regs.append(reg)
         return func
 
+@implementer(IDecoratorHook)
+class DecoratorHook(BaseHook, DecoratorMixin):
+    pass
+
+from ._classreg import ClassregMixin
+
+class Hook(DecoratorHook, ClassregMixin):
+    pass
+
+class CancellableHook(Hook):
+    def _make_eventobj(self, *dicts, **keywords):
+        event = super(CancellableHook, self)._make_eventobj(*dicts, **keywords)
+        def cancel():
+            event.cancelled = True
+        event.cancelled = False
+        event.cancel = cancel
+
+    def _fire_call_list(self, calllist, event):
+        for handler in calllist:
+            try:
+                handler(event)
+            except:
+                log.err()
+            if event.cancelled:
+                break

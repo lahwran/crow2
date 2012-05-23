@@ -2,9 +2,7 @@
 Message-passing "event" system
 """
 
-from ._base import BaseHook
-from ._classreg import ClassregHookMixin
+from ._base import Hook
+from ._classreg import ClassregMixin
 from ._yielding import yielding
-
-class Hook(BaseHook, ClassregHookMixin):
-    pass
+from ._hooktree import HookTree, HookMultiplexer

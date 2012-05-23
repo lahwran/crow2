@@ -205,7 +205,7 @@ class ClassRegistration(object):
             self.unregister_proxies()
 
 
-class ClassregHookMixin(object):
+class ClassregMixin(object):
     def register_instantiation(self, clazz, *reg_args, **reg_keywords):
         """
         Register a class for instantiation; registers the provided class through a ClassRegistration proxy

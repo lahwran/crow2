@@ -32,6 +32,10 @@ class HookTree(object): #TODO: make this do stuff
             del keywords["hook_class"]
         instance = hook_class(*args, **keywords)
         self._children[name] = instance
+        return instance
+
+    def createsub(self, name, *args, **keywords):
+        return self.createhook(name, hook_class=type(self), *args, **keywords)
 
     def addhook(self, name, instance):
         self._children[name] = instance

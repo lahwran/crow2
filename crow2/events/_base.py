@@ -416,6 +416,17 @@ class BaseHook(object):
 
         self.sorted_call_list = None
 
+    def tag(self, tagname, before=(), after=()):
+        before = self._ensure_list(before)
+        after = self._ensure_list(before)
+
+        tag = self.tags[tagname]
+
+        if not tag.deletable:
+            raise AlreadyRegisteredError("tag %r already has dependencies" % tagname)
+
+        tag.dependencies(before, after)
+
 class DecoratorMixin(object):
     @paramdecorator(partialiface=IPartialRegistration)
     def __call__(self, func, *args, **keywords):

@@ -37,9 +37,10 @@ class PackageLoader(object):
         try:
             try:
                 names = listpackage(self.package)
-            except ImportError:
+            except ImportError as e:
                 print "did you forget to add an __init__.py?"
-                raise
+                print e.message
+                raise SystemExit
 
             for name in names:
                 plugin = namedModule(self.package + "." + name)

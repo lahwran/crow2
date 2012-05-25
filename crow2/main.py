@@ -7,6 +7,9 @@ class MainloopHook(ClassregMixin):
         self.mainloop = None
 
     def fire(self, *contexts, **keywords):
+        if not self.mainloop:
+            return
+
         from crow2.util import AttrDict
         event = AttrDict()
         for context in contexts + (keywords,):

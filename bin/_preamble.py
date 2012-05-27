@@ -26,7 +26,7 @@ specially in order to run these programs from bin/.
 
 import sys, os
 
-path = os.path.abspath(sys.argv[0])
+path = os.path.abspath(os.path.realpath(sys.argv[0]))
 while os.path.dirname(path) != path:
     if os.path.exists(os.path.join(path, 'crow2', '__init__.py')):
         sys.path.insert(0, path)

@@ -1,4 +1,4 @@
-from crow2.events._base import DecoratorHook
+from crow2.events._base import DecoratorHook, Hook
 import crow2.test.setup # pylint: disable = W0611
 from crow2.test.util import Counter
 import pytest
@@ -227,4 +227,47 @@ class TestHook(object):
         out, err = capsys.readouterr()
 
         assert "warning" in out.lower()
+
+    def test_error_logging(self, capsys):
+        safe_hook = Hook(stop_exceptions=True)
+        safe_counter = Counter()
+    
+        class TestErrorLoggingError(Exception):
+            pass
+
+        @safe_hook
+        def raising_handler(event):
+            event.before = True
+            raise TestErrorLoggingError("derp")
+
+        @safe_hook(after="raising_handler")
+        def check_success(event):
+            safe_counter.tick()
+            assert event.before
+
+        oldout, olderr = capsys.readouterr()
+        # check that it works
+        safe_hook.fire()
+        assert safe_counter.count == 1
+        out, err = capsys.readouterr() # test that the error was logged
+        assert "TestErrorLoggingError" in out
+        assert "derp" in out
+        assert "raising_handler" in out
+
+        unsafe_hook = Hook(stop_exceptions=False)
+        unsafe_counter = Counter()
+
+        @unsafe_hook
+        def raising_handler_2(event):
+            event.before = True
+            raise TestErrorLoggingError("herp")
+
+        @unsafe_hook(after="raising_handler_2")
+        def should_never_run(event):
+            assert event.before
+            unsafe_counter.tick()
+
+        with pytest.raises(TestErrorLoggingError):
+            unsafe_hook.fire()
+        assert unsafe_counter.count == 0
 

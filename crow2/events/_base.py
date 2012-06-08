@@ -150,13 +150,14 @@ class BaseHook(object):
     It's designed to be highly subclassable. Be sure to read all the docs and preferably a large amount of the code
     before you start subclassing; a lot is already provided.
     """
-    def __init__(self, default_tags=()):
+    def __init__(self, default_tags=(), stop_exceptions=False):
         self.sorted_call_list = None
         self.handler_references = {}
         self.references = {}
         self.referencenames = {}
         self.registration_groups = set()
         self.tags = TagDict()
+        self.stop_exceptions = stop_exceptions
 
         lasttag = ()
         for tagname in default_tags:
@@ -200,8 +201,10 @@ class BaseHook(object):
             try:
                 handler(event)
             except:
-                log.err()
-                # derp, what now
+                if self.stop_exceptions:
+                    log.err()
+                else:
+                    raise
 
     ### Baking/fire preparation -------------------------
 

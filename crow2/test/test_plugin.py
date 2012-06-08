@@ -1,5 +1,9 @@
 """
 Tests for crow2.plugin
+
+Note: these tests load a bunch of modules and just leave them loaded. It should be
+okay to leave them loaded because none of them change any state or are referenced
+again, but just fyi.
 """
 import sys
 
@@ -8,10 +12,51 @@ import pytest
 import crow2.plugin
 import crow2.test.setup
 
+plugin_targets = "crow2.test.plugin_targets."
+cases = [
+        ("simple_package", ("child_1", "child_b", "child_z",
+            "the_package", "subpackage")),
+        ("explicit_children", ("child_1", "child_2", "explicit_children")),
+        ("simple_module", ("simple_module",))
+]
 
-ids = ("1", "B", "Z")
+ids = set(("1", "B", "Z"))
 
-def create(path):
+@pytest.mark.parametrize(("packagename", "names"), cases)
+def test_loader(packagename, names):
+    """
+    Test that the loader can load modules
+    """
+    modulename = plugin_targets + packagename
+
+    instance = crow2.plugin.Tracker(modulename)
+
+    instance.load()
+
+    assert len(instance.plugins) == len(names)
+    assert set([plugin.myname for plugin in instance.plugins]) == set(names)
+
+    with pytest.raises(crow2.plugin.AlreadyLoadedError):
+        instance.load()
+
+def test_load_errors():
+    modulename = plugin_targets + "nonexistant_module"
+    instance = crow2.plugin.Tracker(modulename)
+    with pytest.raises(crow2.plugin.LoadError):
+        instance.load()
+
+    modulename = plugin_targets + "redirect_loop_0"
+    instance = crow2.plugin.Tracker(modulename)
+    with pytest.raises(crow2.plugin.LoadRedirectError):
+        instance.load()
+
+    modulename = plugin_targets + "broken_module"
+    instance = crow2.plugin.Tracker(modulename)
+    with pytest.raises(crow2.plugin.LoadError):
+        instance.load()
+    
+
+def create_empty(path):
     """
     Create 
     """
@@ -28,17 +73,16 @@ def test_listpackage(tmpdir, monkeypatch):
     children = set("child" + id for id in ids)
 
     packagepath.mkdir()
-    create(packagepath.join("__init__.py"))
+    create_empty(packagepath.join("__init__.py"))
     for child in children:
-        create(packagepath.join(child+".py"))
+        create_empty(packagepath.join(child+".py"))
 
     getmodulename = lambda parent, name: name.partition(".")[0]
     monkeypatch.setattr(crow2.plugin, "getmodulename", getmodulename)
     monkeypatch.syspath_prepend(tmpdir)
 
-    result = crow2.plugin.listpackage(packagename)
+    result = crow2.plugin.listpackage([str(packagepath)])
 
-    del sys.modules[packagename]
     assert result == children
 
 def test_getmodulename(tmpdir):
@@ -54,13 +98,13 @@ def test_getmodulename(tmpdir):
     emptydirs = set("emptydir" + id for id in ids)
 
     packagepath.mkdir()
-    create(packagepath.join("__init__.py"))
+    create_empty(packagepath.join("__init__.py"))
     for name, suffix in children:
-        create(packagepath.join(name + suffix))
+        create_empty(packagepath.join(name + suffix))
     for subpackage, suffix in subpackages:
         subpackagepath = packagepath.join(subpackage)
         subpackagepath.mkdir()
-        create(subpackagepath.join("__init__"+suffix))
+        create_empty(subpackagepath.join("__init__"+suffix))
     for emptydir in emptydirs:
         packagepath.join(emptydir).mkdir()
 
@@ -74,106 +118,3 @@ def test_getmodulename(tmpdir):
     for name in emptydirs:
         result = crow2.plugin.getmodulename(str(packagepath), name)
         assert result == None
-
-def test_moduleloader():
-    """
-    Test that the module loader is able to load individual modules
-    (it can't yet)
-    """
-    moduleloader = crow2.plugin.ModuleLoader("filename")
-    assert moduleloader
-    assert not "left unfinished"
-
-
-class TestPackageLoader(object):
-    """
-    Tests for the loader which loads all the modules in a package
-    """
-    def test_repr(self, tmpdir):
-        """
-        Tests that repr gives useful information. I'm only testing this because I'm an idiot about 100% test coverage.
-        """
-        packagename = "test_packageloader_repr_package"
-        packagepath = tmpdir.join(packagename)
-        packagepath.mkdir()
-        create(packagepath.join("__init__.py"))
-
-        name = "packageloader_name_here"
-        instance = crow2.plugin.PackageLoader(packagename, name)
-
-        repred = repr(instance)
-        assert packagename in repred
-
-        stred = str(instance)
-        assert packagename in stred
-        assert name in stred
-
-    def stub(self, path, name, reloaded):
-        """
-        generate a stub module with attributes that can be checked for
-        """
-        writer = path.open("w")
-        writer.write("myname = %r\n" % name)
-        writer.write("reloaded = %r\n" % reloaded)
-        writer.close()
-
-    def test_loader(self, tmpdir, monkeypatch):
-        """
-        Test that the loader can load and reload modules
-        """
-        packagename = "test_packageloader_loader_package"
-        packagepath = tmpdir.join(packagename)
-        children = set("child" + id for id in ids)
-        subpackage = "subpackage"
-        emptydirs = set("emptydir" + id for id in ids)
-        names = set((subpackage,)) | children
-
-        packagepath.mkdir()
-        create(packagepath.join("__init__.py"))
-        for name in children:
-            self.stub(packagepath.join(name + ".py"), name, False)
-        subpackagepath = packagepath.join(subpackage)
-        subpackagepath.mkdir()
-        self.stub(subpackagepath.join("__init__.py"), subpackage, False)
-        for emptydir in emptydirs:
-            packagepath.join(emptydir).mkdir()
-
-        monkeypatch.syspath_prepend(tmpdir)
-
-        name = "packageloader_name_here"
-        instance = crow2.plugin.PackageLoader(packagename, name)
-
-        with pytest.raises(crow2.plugin.NotLoadedError):
-            instance.unload()
-
-        sysmodules = dict(sys.modules)
-
-        instance.load()
-
-        assert len(instance.plugins) == len(names)
-        assert all([not plugin.reloaded for plugin in instance.plugins])
-        assert all([plugin.myname in names for plugin in instance.plugins])
-
-        with pytest.raises(crow2.plugin.AlreadyLoadedError):
-            instance.load()
-
-        instance.unload()
-
-        assert sys.modules == sysmodules
-        sysmodules = None
-
-        for name in children:
-            self.stub(packagepath.join(name + ".py"), name, True)
-        self.stub(subpackagepath.join("__init__.py"), subpackage, True)
-
-        instance.load()
-
-        assert len(instance.plugins) == len(names)
-        assert all([plugin.reloaded for plugin in instance.plugins])
-        assert all([plugin.myname in names for plugin in instance.plugins])
-
-        instance.unload()
-
-
-
-

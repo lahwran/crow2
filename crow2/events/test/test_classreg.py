@@ -1,16 +1,16 @@
 from crow2.events import exceptions
 from crow2.events._base import DecoratorHook
-from crow2.events._classreg import ClassRegistration, MethodProxy, ClassregHookMixin
+from crow2.events._classreg import HandlerClass, MethodProxy, ClassregMixin
 from crow2.test.testutil import Counter
 import crow2.test.setup # pylint: disable = W0611
 import pytest
 
-class MixedHook(DecoratorHook, ClassregHookMixin):
+class MixedHook(DecoratorHook, ClassregMixin):
     pass
 
 def test_class_reg_errors():
     """
-    Test that ClassRegistration things which raise an error raise them at the right times
+    Test that HandlerClass things which raise an error raise them at the right times
     """
     hook_sentinel = object()
     hook2 = MixedHook()
@@ -22,7 +22,7 @@ def test_class_reg_errors():
             pass
 
     with pytest.raises(exceptions.NotInstantiableError):
-        registration = ClassRegistration(hook_sentinel, Clazz)
+        registration = HandlerClass(Clazz)
 
     class Clazz(object):
         "A proxied class which should not cause any errors to register"
@@ -34,7 +34,7 @@ def test_class_reg_errors():
             "A method with a registration"
             pass
 
-    registration = ClassRegistration(hook_sentinel, Clazz)
+    registration = HandlerClass(Clazz)
     registration.register_proxies()
 
     with pytest.raises(exceptions.AlreadyRegisteredError):
@@ -45,10 +45,10 @@ def test_class_reg_errors():
         def __init__(self):
             self.parent_registration = None
         def delete(self):
-            "A delete method which will cause a warning when the ClassRegistration overwrites it"
+            "A delete method which will cause a warning when the HandlerClass overwrites it"
             pass
 
-    registration = ClassRegistration(hook_sentinel, Clazz)
+    registration = HandlerClass(Clazz)
     instance = registration()
     instance.delete()
 

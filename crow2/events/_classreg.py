@@ -99,12 +99,12 @@ class MethodProxy(object):
         return "MethodProxy(%s.%s.%s)" % (self.clazz.__module__, self.clazz.__name__,
                                             self.name)
 
-class ClassRegistration(object):
+class HandlerClass(object):
     """
     Proxies a class such that when an instance is __call__ed, the created instance will be tracked and
     any @hook.method-ed methods will be registered
     """
-    def __init__(self, hook, clazz):
+    def __init__(self, clazz, hook=None):
         self.clazz = clazz
         flattened = AttrDict()
         self.flattened = flattened
@@ -210,7 +210,7 @@ class ClassregMixin(object):
         """
         Register a class for instantiation; registers the provided class through a ClassRegistration proxy
         """
-        self.register(ClassRegistration(self, clazz), *reg_args, **reg_keywords)
+        self.register(HandlerClass(clazz, self), *reg_args, **reg_keywords)
 
         return clazz
 

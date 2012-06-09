@@ -1,0 +1,2 @@
+
+myname = "child_1"

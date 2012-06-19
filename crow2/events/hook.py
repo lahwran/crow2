@@ -85,14 +85,6 @@ class TaggedGroup(object):
     def __repr__(self):
         return "<Tag:%s>" % self.name # pragma: no cover
 
-class MethodRegistration(object):
-    """
-    Data structure used by class instantiation and method registration
-    """
-    def __init__(self, hook, args, keywords):
-        self.hook = hook
-        self.args = args
-        self.keywords = keywords
 
 class IHook(Interface):
     def register(target, **keywords):
@@ -104,10 +96,6 @@ class IHook(Interface):
     def register_once(target, **keywords):
         """
         Register a callable to be called by this hook and then unregistered
-        """
-    def register_method(target, **keywords):
-        """
-        Add a registration to a target method such that it can be detected by ClassRegistration
         """
     def unregister(target):
         """
@@ -127,9 +115,6 @@ class IDecoratorHook(IHook): # pragma: no cover
 
     def once(**keywords):
         "Create a partial for register_once()"
-
-    def method(**keywords):
-        "Create a partial for register_method()"
 
 class IPartialRegistration(Interface):
     func = Attribute("the method-function which this partial is for")
@@ -195,8 +180,6 @@ class BaseHook(object):
         """
         actually call all the handlers in our call list
         """
-        # TODO: exception handling
-        # TODO: cancel-handling hook subclass
         for handler in calllist:
             try:
                 handler(event)
@@ -438,40 +421,8 @@ class DecoratorMixin(object):
         """
         return self.register(func, *args, **keywords)
 
-    @paramdecorator
-    def once(self, func, *args, **keywords):
-        """
-        Decorator version of register_once()
-
-        TODO: who in the world would ever use a decorator to register once?
-        """
-        return self.register_once(func, *args, **keywords)
-
-    @paramdecorator
-    def method(self, func, *args, **keywords):
-        """
-        Mark a method for registration later
-
-        ** DO NOT OVERRIDE IN A SUBCLASS unless you understand the
-            class instantiation handler system well
-            enough to understand the consequences! See MethodProxy and ClassRegistration **
-        """
-        try:
-            method_regs = func._crow2events_method_regs_
-        except AttributeError:
-            method_regs = []
-            func._crow2events_method_regs_ = method_regs
-        reg = MethodRegistration(self, args, keywords)
-        method_regs.append(reg)
-        return func
-
 @implementer(IDecoratorHook)
-class DecoratorHook(BaseHook, DecoratorMixin):
-    pass
-
-from ._classreg import ClassregMixin
-
-class Hook(DecoratorHook, ClassregMixin):
+class Hook(BaseHook, DecoratorMixin):
     pass
 
 class CancellableHook(Hook):
@@ -487,6 +438,9 @@ class CancellableHook(Hook):
             try:
                 handler(event)
             except:
-                log.err()
+                if self.stop_exceptions:
+                    log.err()
+                else:
+                    raise
             if event.cancelled:
                 break

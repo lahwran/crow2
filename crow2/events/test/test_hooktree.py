@@ -1,7 +1,8 @@
-from crow2.events._hooktree import HookTree, HookMultiplexer
-from crow2.events._base import Hook
-from crow2.test.util import Counter
+
+from crow2.events.hooktree import HookTree, HookMultiplexer
+from crow2.events.hook import Hook
 from crow2.events.exceptions import AlreadyRegisteredError, NameResolutionError, NotRegisteredError
+from crow2.test.util import Counter
 import pytest
 
 

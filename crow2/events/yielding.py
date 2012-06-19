@@ -1,10 +1,12 @@
 import functools
+
 from twisted.python import log
 from twisted.internet.defer import Deferred
-from crow2.util import paramdecorator, DecoratorPartial
 from zope.interface import Interface, Attribute, implementer
+
+from crow2.util import paramdecorator, DecoratorPartial
 from crow2.adapterutil import adapter_for
-from crow2.events._base import IDecoratorHook, IPartialRegistration
+from crow2.events.hook import IDecoratorHook, IPartialRegistration
 
 @paramdecorator
 def yielding(func):
@@ -35,7 +37,7 @@ def adapt_deferred(deferred):
 
 @adapter_for(IDecoratorHook, IYieldedCallback)
 def adapt_hook(hook):
-    return hook.once
+    return hook.register_once
 
 @adapter_for(IPartialRegistration, IYieldedCallback)
 def adapt_partial_hook(partial):

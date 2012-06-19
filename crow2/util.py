@@ -5,10 +5,11 @@ A dropbox for uncategorized utility code that doesn't belong anywhere else.
 import warnings
 import inspect
 import functools
+from collections import deque
 from zope.interface import alsoProvides
 
 class DecoratorPartial(object):
-    def __init__(self, func, argnum, partialiface, args, keywords):
+    def __init__(self, func, argnum, partialiface, include_call_type, args, keywords):
         self.func = func
         self.args = args
         self.keywords = keywords
@@ -16,22 +17,22 @@ class DecoratorPartial(object):
         if partialiface:
             alsoProvides(self, partialiface)
         self.partialiface = partialiface
+        self.include_call_type = include_call_type
 
 
     def __call__(self, target):
         args = self.args[:self.argnum] + (target,) + self.args[self.argnum:]
         keywords = self.keywords
+        if self.include_call_type:
+            keywords["paramdecorator_simple_call"] = False
 
         return self.func(*args, **keywords)
 
-    def __repr__(self):
-        return "DecoratorPartial(func=%r, isname=%r, identifier=%r, *%r, **%r)" % (self.func, self.isname, self.identifier,
-                                            self.args, self.keywords)
-
     def copy(self):
-        return DecoratorPartial(self.func, self.argnum, self.partialiface, self.args, self.keywords)
+        return DecoratorPartial(self.func, self.argnum, self.partialiface, self.include_call_type, self.args, self.keywords)
 
-def paramdecorator(decorator_func, argname=None, argnum=None, useself=None, partialiface=None):
+
+def paramdecorator(decorator_func, argname=None, argnum=None, useself=None, partialiface=None, include_call_type=False):
     """
     Paramater-taking decorator-decorator; That is, decorate a function with this to make it into a paramater-decorator
 
@@ -85,7 +86,7 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None, part
  
     assert argnum is not None
 
-    makepartial = functools.partial(DecoratorPartial, decorator_func, argnum, partialiface)
+    makepartial = functools.partial(DecoratorPartial, decorator_func, argnum, partialiface, include_call_type)
 
     @functools.wraps(decorator_func)
     def meta_decorated(*args, **keywords):
@@ -99,9 +100,14 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None, part
 
         # called as a simple decorator
         if (len(args) == argnum+1 and
-            (inspect.isfunction(args[argnum]) or inspect.isclass(args[argnum]))
+            (inspect.isfunction(args[argnum]) or
+                inspect.isclass(args[argnum]) or
+                inspect.ismethod(args[argnum]))
             and len(keywords) == 0):
-            return decorator_func(*args)
+            if include_call_type:
+                return decorator_func(*args, paramdecorator_simple_call=True)
+            else:
+                return decorator_func(*args)
         else: # called as an argument decorator
             return makepartial(args, keywords)
     meta_decorated.undecorated = decorator_func

@@ -1,5 +1,5 @@
 from crow2.util import paramdecorator
-from ._base import Hook, IDecoratorHook, DecoratorMixin
+from .hook import Hook, IDecoratorHook, DecoratorMixin
 from .exceptions import AlreadyRegisteredError, NameResolutionError
 from zope.interface import implementer
 

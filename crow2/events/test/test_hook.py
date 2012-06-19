@@ -1,7 +1,8 @@
-from crow2.events._base import DecoratorHook, Hook
+import pytest
+
 import crow2.test.setup # pylint: disable = W0611
 from crow2.test.util import Counter
-import pytest
+from crow2.events.hook import Hook
 from crow2.events import exceptions
 
 class TestHook(object):
@@ -13,7 +14,7 @@ class TestHook(object):
         Test that simple use of the Hook class works
         """
         counter = Counter()
-        hook = DecoratorHook()
+        hook = Hook()
         @hook
         def testfunc(event):
             "call check"
@@ -26,7 +27,7 @@ class TestHook(object):
         Test that simple three-in-a-row dependencies work
         """
         counter = Counter()
-        hook = DecoratorHook()
+        hook = Hook()
 
         @hook
         def second(event):
@@ -56,7 +57,7 @@ class TestHook(object):
 
     def test_error_checking(self):
         with pytest.raises(exceptions.DuplicateRegistrationError):
-            hook = DecoratorHook()
+            hook = Hook()
             @hook
             @hook
             def stub():
@@ -64,7 +65,7 @@ class TestHook(object):
                 pass
 
         with pytest.raises(exceptions.InvalidOrderRequirementsError):
-            hook = DecoratorHook()
+            hook = Hook()
             @hook
             def firstfunc(event):
                 "a target function"
@@ -74,7 +75,7 @@ class TestHook(object):
                 "function with nonsense order requirements"
                 pass
 
-        hook = DecoratorHook()
+        hook = Hook()
         @hook(after="dependency missing")
         def stub():
             "handler which depends on something which doesn't exist"
@@ -84,7 +85,7 @@ class TestHook(object):
 
     def test_tags(self):
         counter = Counter()
-        hook = DecoratorHook(["early", "normal", "late"])
+        hook = Hook(["early", "normal", "late"])
 
         @hook(tag="normal")
         def func_normal(event):
@@ -117,7 +118,7 @@ class TestHook(object):
         assert counter.count == 3
 
     def test_calldicts(self):
-        hook = DecoratorHook()
+        hook = Hook()
         counter = Counter()
 
         @hook
@@ -135,41 +136,42 @@ class TestHook(object):
         assert context == originalcontext
 
     def test_once(self):
-        hook = DecoratorHook(["tag", "tag2"])
+        hook = Hook(["tag", "tag2"])
         counter = Counter()
 
-        @hook.once(tag="tag")
         def callonce(event):
             counter.tick()
             assert counter.count == 1
+        hook.register_once(callonce, tag="tag")
 
-        @hook.once(tag="tag2")
         def callsecond(event):
             counter.tick()
             assert counter.count == 2
+        hook.register_once(callsecond, tag="tag2")
 
-        @hook.once(tag="temporary_tag")
         def forgetme(event):
             pass # tests tag garbage collection
+        hook.register_once(forgetme, tag="temporary_tag")
 
         hook.fire()
         assert counter.count == 2
         hook.fire()
         assert counter.count == 2
 
-        @hook.once(tag="tag")
         def tag_stub(event):
             pass
+        hook.register_once(tag_stub, tag="tag")
 
-        @hook.once(tag="tag2")
         def tag2_stub(event):
             pass
+        hook.register_once(tag2_stub, tag="tag2")
 
-        @hook.once(before="tag", after="tag2")
         def impossible_link(event):
             pass
+        hook.register_once(impossible_link, before="tag", after="tag2")
 
-        # if this fails, the tags were lost
+        # if this fails, the tags were lost when there was nothing
+        # pointed to them
         with pytest.raises(exceptions.CyclicDependencyError):
             hook.fire()
 
@@ -177,7 +179,7 @@ class TestHook(object):
             hook.unregister(callonce)
 
     def test_dependency_lookup(self): #dependency lookups are very wrong
-        hook = DecoratorHook()
+        hook = Hook()
         @hook
         def local_target(event):
             event.local_target_run = True
@@ -188,18 +190,18 @@ class TestHook(object):
             event.check_from_remote_target = True
 
         from .hook_reference_target import attach_to_hook
-        attach_to_hook(hook, after="test_base.local_target")
+        attach_to_hook(hook, after="test_hook.local_target")
 
         hook.fire()
 
     def test_get_name(self):
-        hook = DecoratorHook()
-        assert hook._get_name(TestHook) == "crow2.events.test.test_base.TestHook"
+        hook = Hook()
+        assert hook._get_name(TestHook) == "crow2.events.test.test_hook.TestHook"
 
         from crow2.events.test import hook_reference_target
         assert hook._get_name(hook_reference_target) == "crow2.events.test.hook_reference_target"
 
-        assert hook._get_name(self.test_dependency_lookup) == "crow2.events.test.test_base.TestHook.test_dependency_lookup"
+        assert hook._get_name(self.test_dependency_lookup) == "crow2.events.test.test_hook.TestHook.test_dependency_lookup"
 
         with pytest.raises(Exception):
             hook._get_name(5)
@@ -211,11 +213,11 @@ class TestHook(object):
         immutable_instance = Immutable()
 
         # NOTE: this is not the behavior people probably expect! will need documenting
-        assert hook._get_name(Immutable) == "crow2.events.test.test_base.Immutable"
-        assert hook._get_name(Immutable) == "crow2.events.test.test_base.Immutable"
+        assert hook._get_name(Immutable) == "crow2.events.test.test_hook.Immutable"
+        assert hook._get_name(Immutable) == "crow2.events.test.test_hook.Immutable"
 
     def test_unresolvable_object(self, capsys):
-        hook = DecoratorHook()
+        hook = Hook()
         hook.register(tuple())
 
         out, err = capsys.readouterr()

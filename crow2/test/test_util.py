@@ -222,6 +222,36 @@ class TestParamdecorator(object):
             def nonexistant_target(target):
                 pass
 
+    def test_include_call_type(self):
+        calls = {}
+
+        @crow2.util.paramdecorator(include_call_type=True)
+        def decorate(func, arg=None, paramdecorator_simple_call="default"):
+            calls[func, arg] = paramdecorator_simple_call
+            return func
+
+        assert not calls
+        
+        @decorate
+        def func1():
+            pass
+        assert calls[func1, None] == True
+        assert len(calls) == 1
+
+        @decorate()
+        def func2():
+            pass
+        assert calls[func2, None] == False
+        assert len(calls) == 2
+
+        @decorate(arg="derp")
+        def func3():
+            pass
+        assert calls[func3, "derp"] == False
+        assert len(calls) == 3
+
+        assert all(x != "default" for x in calls.values())
+
 def test_attrdict():
     attrdict = crow2.util.AttrDict()
     attrdict.blah = 1

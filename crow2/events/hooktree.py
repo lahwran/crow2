@@ -1,3 +1,5 @@
+import weakref
+
 from crow2.util import paramdecorator
 from .hook import Hook, IDecoratorHook, DecoratorMixin
 from .exceptions import AlreadyRegisteredError, NameResolutionError
@@ -133,11 +135,11 @@ class HookMultiplexer(DecoratorMixin):
 
     def register(self, handler, name=None, **keywords):
         child = self._get_or_create_child(handler, name)
-        child.register(handler, **keywords)
+        return child.register(handler, **keywords)
 
     def register_once(self, handler, name=None, **keywords):
         child = self._get_or_create_child(handler, name)
-        child.register_once(handler, **keywords)
+        return child.register_once(handler, **keywords)
 
     def unregister(self, handler):
         registrations = 0
@@ -150,3 +152,53 @@ class HookMultiplexer(DecoratorMixin):
         if not registrations:
             raise NotRegisteredError("%r: no sub-hooks unregistered %r" % (self, handler))
 
+@implementer(IDecoratorHook)
+class _InstanceHookProxy(DecoratorMixin):
+    def __init__(self, hook, parent):
+        self.hook = hook
+        self.parent = parent
+
+    def fire(self, *args, **kwargs):
+        self.parent.fire(*args, **kwargs)
+
+    def register(self, handler, **keywords):
+        return self.hook.register(handler, **keywords)
+
+    def register_once(self, handler, **keywords):
+        return self.hook.register_once(handler, **keywords)
+
+    def unregister(self, handler):
+        return self.hook.unregister(handler, **keywords)
+
+
+class InstanceHook(HookMultiplexer):
+    def __init__(self, name=None, preparer_class=Hook, hook_class=Hook):
+        super(InstanceHook, self).__init__(self, name=name,
+                preparer=preparer_class(), hook_class=hook_class,
+                childarg="_instance_id", raise_on_missing=True)
+        self.instances = {}
+        self._children = weakref.WeakKeyDictionary()
+        self._child_proxies = weakref.WeakKeyDictionary()
+    
+    def _remove_instance(self, instance):
+        del self._children[id(instance)]
+    
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
+
+        try:
+            return self._child_proxies[instance]
+        except KeyError:
+            self._children[instance] = self._hook_class()
+            self._child_proxies[instance] = _InstanceHookProxy(self._children[instance], self)
+            return self._child_proxies[instance]
+    
+    def register(self, handler, **keywords):
+        return self.preparer.register(handler, **keywords)
+    
+    def register_once(self, handler, **keywords):
+        return self.preparer.register_once(handler, **keywords)
+    
+    def unregister(self, handler):
+        return self.preprarer.unregister(handler)

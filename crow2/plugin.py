@@ -43,7 +43,9 @@ def load(modulename, is_pluginset=True, filter_children=None, seen=None):
                 module = namedModule(current_module_name)
             except ImportError as e:
                 # TODO: need to ensure this maintains context - it will eat any errors from bad code in plugins if it doesn't!
-                raise LoadError("Failed to load %r (%r): %r" % (modulename, current_module_name, e.message))
+                import traceback
+                formatted = traceback.format_exc()
+                raise LoadError("Failed to load %r (%r): %s" % (modulename, current_module_name, formatted))
 
             seen.add(current_module_name) # immediately mark the name as seen
 
@@ -63,7 +65,8 @@ def load(modulename, is_pluginset=True, filter_children=None, seen=None):
 
         loadable = getattr(module, "crow2_pluginset", False)
         if load_children and not loadable:
-            raise LoadError("tried to load non-loadable module %r" % final_module_name)
+            raise LoadError(("tried to load non-pluginset module %r as a pluginset\n"
+                            "perhaps try setting crow2_pluginset in your __init__.py") % final_module_name)
 
         # if the module has an override for the child filtering, use that
         children = getattr(module, "crow2_children", filter_children)

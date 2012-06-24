@@ -1,1 +1,1 @@
-raise ImportError("herp the derp, don't import me")
+from crow2.test.util import should_never_run; should_never_run()

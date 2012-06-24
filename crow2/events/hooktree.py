@@ -2,7 +2,7 @@ import weakref
 
 from crow2.util import paramdecorator
 from .hook import Hook, IDecoratorHook, DecoratorMixin
-from .exceptions import AlreadyRegisteredError, NameResolutionError
+from .exceptions import AlreadyRegisteredError, NameResolutionError, NotRegisteredError
 from zope.interface import implementer
 
 class HookTree(object): #TODO: make this do stuff
@@ -32,8 +32,15 @@ class HookTree(object): #TODO: make this do stuff
         hook_class = keywords.get("hook_class", self._default_hook_class)
         if "hook_class" in keywords:
             del keywords["hook_class"]
+
         instance = hook_class(*args, **keywords)
         self._children[name] = instance
+        
+        sentinel = object()
+        instance_name = getattr(instance, "_name", sentinel)
+        if instance_name is not sentinel:
+            instance._name = "%s.%s" % (self._name, name)
+
         return instance
 
     def createsub(self, name, *args, **keywords):
@@ -41,6 +48,7 @@ class HookTree(object): #TODO: make this do stuff
 
     def addhook(self, name, instance):
         self._children[name] = instance
+        return instance
 
     def __repr__(self):
         return "<HookTree %s>" % self._name
@@ -59,7 +67,14 @@ class ChildHook(Hook):
         super(ChildHook, self).unregister(target)
         self._attempt_freeing()
 
-def CommandHook(ChildHook):
+    def __repr__(self):
+        parentname = self._parent._name
+        if parentname is None:
+            parentname = repr(self._parent)
+        return "<%s %s[%r]>" % (type(self).__name__, parentname, self._name)
+
+class CommandHook(ChildHook):
+    main_tag = "main"
     def register(self, func, before=(), after=(), tag=None):
         if not before and not after and not tag:
             tag = self.main_tag
@@ -81,41 +96,49 @@ def CommandHook(ChildHook):
 @implementer(IDecoratorHook)
 class HookMultiplexer(DecoratorMixin):
     def __init__(self, name=None, preparer=None, hook_class=ChildHook,
-            childarg="child_name", raise_on_missing=True):
+            childarg="name", raise_on_missing=True, raise_on_noname=True,
+            missing=None):
         self._children = {}
         self._hook_class = hook_class
         self._name = name
 
         self.preparer = preparer
+        self.missing = missing
         self.childarg = childarg
         self.raise_on_missing = raise_on_missing
+        self.raise_on_noname = raise_on_noname
 
     def fire(self, *contexts, **keywords):
-        if "name" in keywords:
-            name = keywords.pop("name")
-            keywords[self.childarg] = name
-        elif self.childarg in keywords:
+        name = None
+        if self.childarg in keywords:
             name = keywords[self.childarg]
-        else:
+        elif self.raise_on_noname:
             raise TypeError("Required keywordarg %r (or 'name') not found" % self.childarg)
 
         keywords["multiplexer"] = self
+        preparer_event = None
         if self.preparer:
-            event = self.preparer.fire(*contexts, **keywords)
-            if getattr(event, "cancelled", False):
-                return event
+            preparer_event = self.preparer.fire(*contexts, **keywords)
+            if getattr(preparer_event, "cancelled", False):
+                return preparer_event
 
             contexts = ()
-            keywords = event
-            name = event[self.childarg]
+            keywords = preparer_event
+            name = preparer_event[self.childarg]
 
         try:
             command = self._children[name]
         except KeyError:
-            if self.raise_on_missing:
+            if self.missing:
+                keywords["name"] = name
+                keywords[self.childarg] = name
+                return self.missing.fire(*contexts, **keywords)
+            elif self.raise_on_missing:
                 raise NameResolutionError("No such child: %r" % name)
-        else:
-            return command.fire(*contexts, **keywords)
+            else:
+                return preparer_event
+
+        return command.fire(*contexts, **keywords)
 
     def name_missing(self, handler, name):
         return handler.__name__
@@ -152,14 +175,21 @@ class HookMultiplexer(DecoratorMixin):
         if not registrations:
             raise NotRegisteredError("%r: no sub-hooks unregistered %r" % (self, handler))
 
+    def __repr__(self):
+        if self._name is None:
+            return object.__repr__(self)
+        return "<%s %s>" % (type(self).__name__, self._name)
+
 @implementer(IDecoratorHook)
 class _InstanceHookProxy(DecoratorMixin):
-    def __init__(self, hook, parent):
+    def __init__(self, hook, instance_weakref, parent):
         self.hook = hook
+        self.instance_weakref = instance_weakref
         self.parent = parent
 
     def fire(self, *args, **kwargs):
-        self.parent.fire(*args, **kwargs)
+        kwargs["_instance"] = self.instance_weakref()
+        return self.parent.fire(*args, **kwargs)
 
     def register(self, handler, **keywords):
         return self.hook.register(handler, **keywords)
@@ -168,20 +198,20 @@ class _InstanceHookProxy(DecoratorMixin):
         return self.hook.register_once(handler, **keywords)
 
     def unregister(self, handler):
-        return self.hook.unregister(handler, **keywords)
+        return self.hook.unregister(handler)
+
+    def __getattr__(self, name):
+        return getattr(self.hook, name)
 
 
 class InstanceHook(HookMultiplexer):
     def __init__(self, name=None, preparer_class=Hook, hook_class=Hook):
-        super(InstanceHook, self).__init__(self, name=name,
+        super(InstanceHook, self).__init__(name=name,
                 preparer=preparer_class(), hook_class=hook_class,
-                childarg="_instance_id", raise_on_missing=True)
+                childarg="_instance", raise_on_missing=True)
         self.instances = {}
         self._children = weakref.WeakKeyDictionary()
         self._child_proxies = weakref.WeakKeyDictionary()
-    
-    def _remove_instance(self, instance):
-        del self._children[id(instance)]
     
     def __get__(self, instance, owner):
         if instance is None:
@@ -191,8 +221,9 @@ class InstanceHook(HookMultiplexer):
             return self._child_proxies[instance]
         except KeyError:
             self._children[instance] = self._hook_class()
-            self._child_proxies[instance] = _InstanceHookProxy(self._children[instance], self)
-            return self._child_proxies[instance]
+            proxy = _InstanceHookProxy(self._children[instance], weakref.ref(instance), self)
+            self._child_proxies[instance] = proxy
+            return proxy
     
     def register(self, handler, **keywords):
         return self.preparer.register(handler, **keywords)
@@ -201,4 +232,4 @@ class InstanceHook(HookMultiplexer):
         return self.preparer.register_once(handler, **keywords)
     
     def unregister(self, handler):
-        return self.preprarer.unregister(handler)
+        return self.preparer.unregister(handler)

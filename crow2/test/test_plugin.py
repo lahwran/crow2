@@ -39,6 +39,12 @@ def test_loader(packagename, names):
     with pytest.raises(crow2.plugin.AlreadyLoadedError):
         instance.load()
 
+def test_strrepr():
+    tracker = crow2.plugin.Tracker("")
+
+    str(tracker)
+    repr(tracker)
+
 def test_load_errors():
     modulename = plugin_targets + "nonexistant_module"
     instance = crow2.plugin.Tracker(modulename)
@@ -51,6 +57,11 @@ def test_load_errors():
         instance.load()
 
     modulename = plugin_targets + "broken_module"
+    instance = crow2.plugin.Tracker(modulename)
+    with pytest.raises(crow2.plugin.LoadError):
+        instance.load()
+
+    modulename = plugin_targets + "not_pluginset"
     instance = crow2.plugin.Tracker(modulename)
     with pytest.raises(crow2.plugin.LoadError):
         instance.load()
@@ -96,6 +107,7 @@ def test_getmodulename(tmpdir):
                                   for id in ids)
     subpackages = set(("pkg%d" % num, suffix) for num, suffix in enumerate(crow2.plugin.suffixes))
     emptydirs = set("emptydir" + id for id in ids)
+    emptyfiles = set("emptyfile" + id for id in ids)
 
     packagepath.mkdir()
     create_empty(packagepath.join("__init__.py"))
@@ -116,5 +128,8 @@ def test_getmodulename(tmpdir):
         result = crow2.plugin.getmodulename(str(packagepath), name)
         assert result == name
     for name in emptydirs:
+        result = crow2.plugin.getmodulename(str(packagepath), name)
+        assert result == None
+    for name in emptyfiles:
         result = crow2.plugin.getmodulename(str(packagepath), name)
         assert result == None

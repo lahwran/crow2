@@ -23,18 +23,18 @@ class TestParamdecorator(object):
         @simple
         def afunc():
             "stub to decorate"
-            pass
+            should_never_run()
         assert runs[-1] is afunc
         @simple()
         def afunc2():
             "stub to decorate"
-            pass
+            should_never_run()
         assert runs[-1] is afunc2
         with pytest.raises(TypeError):
             @simple("somearg")
             def afunc3():
                 "stub to decorate"
-                pass
+                should_never_run()
 
     def test_requiredarg(self):
         """
@@ -53,13 +53,13 @@ class TestParamdecorator(object):
             @decorator
             def afunc():
                 "stub to decorate"
-                pass
+                should_never_run()
 
         somearg = object()
         @decorator(somearg)
         def afunc2():
             "stub to decorate"
-            pass
+            should_never_run()
         assert lastrun[0] is afunc2
         assert lastrun[1] is somearg
 
@@ -67,7 +67,7 @@ class TestParamdecorator(object):
         @decorator(requiredarg=somearg)
         def afunc3():
             "stub to decorate"
-            pass
+            should_never_run()
         assert lastrun[0] is afunc3
         assert lastrun[1] is somearg
 
@@ -97,7 +97,7 @@ class TestParamdecorator(object):
         @decorator
         def afunc1():
             "stub to decorate"
-            pass
+            should_never_run()
         assert lastrun[0] is afunc1
         assert lastrun[1] is None
         assert lastrun[2] is None
@@ -105,7 +105,7 @@ class TestParamdecorator(object):
         @decorator()
         def afunc2():
             "stub to decorate"
-            pass
+            should_never_run()
         assert lastrun[0] is afunc2
         assert lastrun[1] is None
         assert lastrun[2] is None
@@ -114,7 +114,7 @@ class TestParamdecorator(object):
         @decorator(optionalarg1=somearg)
         def afunc3():
             "stub to decorate"
-            pass
+            should_never_run()
         assert lastrun[0] is afunc3
         assert lastrun[1] is somearg
         assert lastrun[2] is None
@@ -124,7 +124,7 @@ class TestParamdecorator(object):
             @decorator(derp=somearg) # pylint: disable = E1123
             def afunc4():
                 "stub to decorate"
-                pass
+                should_never_run()
 
     def test_quirks(self):
         """
@@ -166,7 +166,7 @@ class TestParamdecorator(object):
 
         @with_args(thing1_sentinel, thing2_sentinel)
         def afunc_1():
-            pass
+            should_never_run()
 
         @crow2.util.paramdecorator(argnum=1, argname="function")
         def with_undetectable_args(*args):
@@ -177,10 +177,10 @@ class TestParamdecorator(object):
 
         @with_undetectable_args(thing1_sentinel, thing2_sentinel)
         def afunc_2():
-            pass
+            should_never_run()
 
         def newfunc():
-            pass
+            should_never_run()
         with_undetectable_args(thing1_sentinel, thing2_sentinel, function=newfunc)
 
         @crow2.util.paramdecorator(argname="target")
@@ -191,7 +191,7 @@ class TestParamdecorator(object):
 
         @with_named_target(thing1_sentinel, thing2_sentinel)
         def afunc_3():
-            pass
+            should_never_run()
 
         
         @crow2.util.paramdecorator(argname="target")
@@ -200,7 +200,7 @@ class TestParamdecorator(object):
 
         @only_named_target
         def afunc_4():
-            pass
+            should_never_run()
 
         class Derp(object):
             @crow2.util.paramdecorator(useself=True)
@@ -211,16 +211,16 @@ class TestParamdecorator(object):
         herp = Derp()
         @herp.method_decorator
         def afunc_5():
-            pass
+            should_never_run()
 
         with pytest.raises(Exception):
             @crow2.util.paramdecorator(useself=False, argnum=0)
             def conflicting_target_id():
-                pass
+                should_never_run()
         with pytest.raises(Exception):
             @crow2.util.paramdecorator(argname="nonexistant")
             def nonexistant_target(target):
-                pass
+                should_never_run()
 
     def test_include_call_type(self):
         calls = {}
@@ -234,23 +234,44 @@ class TestParamdecorator(object):
         
         @decorate
         def func1():
-            pass
+            should_never_run()
         assert calls[func1, None] == True
         assert len(calls) == 1
 
         @decorate()
         def func2():
-            pass
+            should_never_run()
         assert calls[func2, None] == False
         assert len(calls) == 2
 
         @decorate(arg="derp")
         def func3():
-            pass
+            should_never_run()
         assert calls[func3, "derp"] == False
         assert len(calls) == 3
 
         assert all(x != "default" for x in calls.values())
+
+    def test_partial_copy(self):
+        @crow2.util.paramdecorator
+        def test_decorator(argument):
+            should_never_run()
+
+        partial = test_decorator(1)
+        copied = partial.copy()
+
+        # this is a bit of a cheap hack,
+        # but is pretty accurate, so might as well do it
+        assert vars(partial) == vars(copied)
+
+        copied.func = None
+        copied.args = None
+        copied.keywords = None
+        copied.argnum = None
+        copied.partialiface = None
+        copied.include_call_type = None
+
+        assert vars(partial) != vars(copied)
 
 def test_attrdict():
     attrdict = crow2.util.AttrDict()

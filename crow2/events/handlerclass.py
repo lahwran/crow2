@@ -104,14 +104,25 @@ class InstanceHookReference(object):
 
     def add_bound_method(self, bound_method, event):
         obj = event
-        for name in self.names:
-            obj = getattr(obj, name)
-        print obj, bound_method
+        found_names = []
+        try:
+            for name in self.names:
+                obj = getattr(obj, name)
+                found_names.append(name)
+        except AttributeError:
+            from twisted.python.reflect import fullyQualifiedName
+            raise NotInstantiableError("%s: attribute %r not in event.%s (type %r)" % (fullyQualifiedName(bound_method), name, ".".join(found_names), type(obj)))
 
-        if self.simple_call:
-            obj(bound_method)
-        else:
-            obj(*self.args, **self.keywords)(bound_method)
+        try:
+            if self.simple_call:
+                obj(bound_method)
+            else:
+                obj(*self.args, **self.keywords)(bound_method)
+        except Exception:
+            from twisted.python.reflect import fullyQualifiedName
+            import traceback
+            formatted = traceback.format_exc()
+            raise NotInstantiableError("%s: exception while calling hook:\n\n%s" % (fullyQualifiedName(bound_method), formatted))
 
         self.method_hooks[bound_method] = obj
 

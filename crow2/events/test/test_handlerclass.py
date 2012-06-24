@@ -124,7 +124,7 @@ def test_instancehandler():
         @instancehandler.otherthing.otherhook()
         @instancehandler.argthing.arg(derp=True)
         def a_method(self, event):
-            self.counter.tick()
+            should_never_run()
 
     a_method = vars(Target)["a_method"]
     regs = a_method._crow2_instancehookregs
@@ -179,6 +179,44 @@ def test_instancehandler():
         by_names["argthing", "arg"].remove_bound_method(instance.a_method)
         assert unregister_counter.incremented(3)
 
+def test_instancehandler_missinghook():
+    class MissingHook(object):
+        @instancehandler.doesnt.exist
+        def a_method(self, event):
+            should_never_run()
+
+    target = MissingHook()
+    a_method = target.a_method.im_func
+    regs = a_method._crow2_instancehookregs
+    reg = regs[0]
+
+    event = AttrDict()
+
+    with pytest.raises(exceptions.NotInstantiableError):
+        reg.add_bound_method(target.a_method, event)
+
+def test_instancehandler_badarguments():
+    class BadArguments(object):
+        @instancehandler.func(doesnt="take", arguments=True)
+        def a_method(self, event):
+            should_never_run()
+
+    target = BadArguments()
+    a_method = target.a_method.im_func
+    regs = a_method._crow2_instancehookregs
+    reg = regs[0]
+
+    def func():
+        """
+        A function that takes no arguments
+        """
+        should_never_run()
+
+    event = AttrDict(func=func)
+
+    with pytest.raises(exceptions.NotInstantiableError):
+        reg.add_bound_method(target.a_method, event)
+
 def test_handlermethod():
     hook0 = object()
     hook1 = object()
@@ -186,7 +224,7 @@ def test_handlermethod():
     @handlermethod(hook0)
     @handlermethod(hook1)
     def handler():
-        pass
+        should_never_run()
 
     hooks = handler._crow2_hookmethodproxy.registrations
     assert len(hooks) == 2
@@ -204,7 +242,7 @@ def test_get_method_regs():
     @instancehandler.derp(asdf="derp")
     @instancehandler
     def handler():
-        pass
+        should_never_run()
 
     assert len(_get_method_regs(handler)) == 5
     regs = _get_method_regs(handler)[0].registrations
@@ -214,7 +252,7 @@ def test_get_method_regs():
     assert set(x.names for x in _get_method_regs(handler)[1:]) == set((("thing", "hook"), ("otherthing", "derp"), ("derp",), ()))
 
     def handler():
-        pass
+        should_never_run()
 
     assert len(_get_method_regs(handler)) == 0
 
@@ -256,7 +294,7 @@ class TestHandlerClass(object):
             def __init__(self, event):
                 pass
             def herp(self):
-                pass
+                should_never_run()
             herp._crow2_instancehookregs = [DummyAttributeRegistration()]
             def derp(self):
                 self.delete()
@@ -281,7 +319,7 @@ class TestHandlerClass(object):
             def __init__(self, event):
                 pass
             def delete(self):
-                pass
+                should_never_run()
 
         reg = _HandlerClass(Clazz)
 
@@ -300,7 +338,7 @@ class TestHandlerClass(object):
 
         class OtherClazz(object):
             def __init__(self, event):
-                pass
+                should_never_run()
             __init__._crow2_instancehookregs = [DummyAttributeRegistration()]
         with pytest.raises(exceptions.NotInstantiableError):
             otherreg = _HandlerClass(OtherClazz)

@@ -1,14 +1,20 @@
 from crow2 import hook
 from crow2 import plugin
-from crow2.events import ClassregMixin
+from crow2 import util
 
-class MainloopHook(ClassregMixin):
+class AlreadyRunningError(util.ExceptionWithMessage):
+    "Main loop cannot be started from within mainloop"
+
+class MainloopHook(object):
     def __init__(self):
         self.mainloop = None
 
     def fire(self, *contexts, **keywords):
-        if not self.mainloop:
-            return
+        try:
+            if not self.mainloop:
+                return
+        except AttributeError:
+            raise AlreadyRunningError()
 
         from crow2.util import AttrDict
         event = AttrDict()
@@ -34,8 +40,8 @@ class Main(object):
         hook.createhook("stopmainloop")
         hook.createhook("mainloop", hook_class=MainloopHook)
 
-        self.core_loader = plugin.PackageLoader(core)
-        self.plugin_loaders = [plugin.PackageLoader(package) for package in plugins]
+        self.core_loader = plugin.Tracker(core)
+        self.plugin_loaders = [plugin.Tracker(package) for package in plugins]
 
         self.load()
 
@@ -45,26 +51,27 @@ class Main(object):
             loader.load()
 
     def run(self):
-        hook.init.fire(main=self)
-        hook.mainloop.fire(main=self)
-        hook.deinit.fire(main=self)
+        event = hook.init.fire(main=self)
+        hook.mainloop.fire(event, main=self)
+        hook.deinit.fire(event, main=self)
 
     def quit(self, exitcode=0):
         hook.stopmainloop.fire(main=self, exitcode=exitcode)
 
 def scriptmain(sysargs=None):
-    if not sysargs:
+    if sysargs is None:
         import sys
         sysargs = sys.argv[1:]
 
     try:
         import argparse
-    except ImportError:
-        print "Failed to import argparse. Please install it with:"
-        print
-        print "    [sudo] pip install argparse"
-        print
-        print "(or, upgrade to python 2.7)"
+    except ImportError as e:
+        error = e.message + ("\n\nFailed to import argparse. Please install it with:\n"
+                 "\n"
+                 "    [sudo] pip install argparse\n"
+                 "\n"
+                 "(or, upgrade to python 2.7)")
+        raise ImportError(error)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("core", help="Core package-module of plugins to load")

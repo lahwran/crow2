@@ -22,3 +22,5 @@ class Counter(object):
         self.last_incremented = self.count
         return result
 
+def should_never_run():
+    raise AssertionError("this code should never run")

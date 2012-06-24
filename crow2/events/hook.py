@@ -61,7 +61,6 @@ class TaggedGroup(object):
         self.before = ()
         self.after = ()
         self.targets = set()
-        self.deletable = True
 
     def add(self, target):
         "add a target handler"
@@ -70,17 +69,14 @@ class TaggedGroup(object):
     def remove(self, target):
         "remove a target handler"
         self.targets.remove(target)
-        if not len(self.targets) and self.deletable:
-            del self._parent[self.name]
 
     def dependencies(self, before, after):
         """
         set the dependencies, overwriting any that may have been there before
         """
         #TODO: this needs to assert that there were none there before
-        self.before = before
-        self.after = after
-        self.deletable = False
+        self.before = tuple(set(before) | set(self.before))
+        self.after = tuple(set(after) | set(self.after))
 
     def __repr__(self):
         return "<Tag:%s>" % self.name # pragma: no cover
@@ -135,7 +131,7 @@ class BaseHook(object):
     It's designed to be highly subclassable. Be sure to read all the docs and preferably a large amount of the code
     before you start subclassing; a lot is already provided.
     """
-    def __init__(self, default_tags=(), stop_exceptions=False):
+    def __init__(self, default_tags=(), stop_exceptions=False, name=None):
         self.sorted_call_list = None
         self.handler_references = {}
         self.references = {}
@@ -143,6 +139,8 @@ class BaseHook(object):
         self.registration_groups = set()
         self.tags = TagDict()
         self.stop_exceptions = stop_exceptions
+
+        self._name = name
 
         lasttag = ()
         for tagname in default_tags:
@@ -404,14 +402,18 @@ class BaseHook(object):
 
     def tag(self, tagname, before=(), after=()):
         before = self._ensure_list(before)
-        after = self._ensure_list(before)
+        after = self._ensure_list(after)
 
         tag = self.tags[tagname]
 
-        if not tag.deletable:
-            raise AlreadyRegisteredError("tag %r already has dependencies" % tagname)
-
         tag.dependencies(before, after)
+        self.sorted_call_list = None # need to recalculate
+
+    def __repr__(self):
+        if self._name is not None:
+            return "<%s %s>" % (type(self).__name__, self._name)
+        else:
+            return object.__repr__(self)
 
 class DecoratorMixin(object):
     @paramdecorator(partialiface=IPartialRegistration)
@@ -425,13 +427,15 @@ class DecoratorMixin(object):
 class Hook(BaseHook, DecoratorMixin):
     pass
 
+class _CancellerAttrDict(AttrDict):
+    def cancel(self):
+        self.cancelled = True
+
 class CancellableHook(Hook):
     def _make_eventobj(self, *dicts, **keywords):
-        event = super(CancellableHook, self)._make_eventobj(*dicts, **keywords)
-        def cancel():
-            event.cancelled = True
+        event = _CancellerAttrDict(super(CancellableHook, self)._make_eventobj(*dicts, **keywords))
         event.cancelled = False
-        event.cancel = cancel
+        return event
 
     def _fire_call_list(self, calllist, event):
         for handler in calllist:

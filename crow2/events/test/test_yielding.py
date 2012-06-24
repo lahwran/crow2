@@ -1,5 +1,8 @@
+from twisted.internet.defer import Deferred
+
 from crow2.events.hook import Hook
 from crow2.events.yielding import yielding
+from crow2.util import AttrDict
 
 def test_simple():
     """
@@ -40,3 +43,48 @@ def test_simple():
     # aaand, call without arguments. are you still there, handler?
     assert "was_called" in hook2.fire()
     # if we got here, yep!
+
+def test_partial_adaptation():
+    hook1 = Hook()
+    hook2 = Hook()
+
+    @hook2
+    def first(event):
+        event.before_called = True
+
+    @hook2
+    def third(event):
+        assert event.handler_called
+        event.after_called = True
+
+    @hook1
+    @yielding
+    def handler(event):
+        event.handler_called = True
+
+        event = yield hook2(after=first, before=third)
+
+        assert event.before_called
+        event.handler_called = True
+        
+    first_event = hook1.fire()
+    assert first_event.handler_called
+
+    second_event = hook2.fire()
+    assert second_event.after_called
+
+def test_deferred_adaptation():
+    hook1 = Hook()
+
+    @hook1
+    @yielding
+    def handler(event):
+        event.handler_called = True
+        deferred_result = yield event.deferred
+        deferred_result.handler_called = True
+
+    event = hook1.fire(deferred=Deferred())
+
+    newevent = AttrDict()
+    event.deferred.callback(newevent)
+    assert newevent.handler_called

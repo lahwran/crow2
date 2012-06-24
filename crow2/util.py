@@ -114,66 +114,6 @@ def paramdecorator(decorator_func, argname=None, argnum=None, useself=None, part
     return meta_decorated
 paramdecorator = paramdecorator(paramdecorator) # we are ourselves!
 
-@paramdecorator(argname="method_func", argnum=0)
-class MethodProvides(object):
-    def __init__(self, method_func, *interfaces):
-        self.method_func = method_func
-        functools.update_wrapper(self, method_func)
-        self.interfaces = interfaces
-
-    def __get__(self, instance, owner):
-        result = self.method_func.__get__(instance, owner)
-        self.alsoProvides(result, *self.interfaces)
-        return result
-
-    def __call__(self, *args, **keywords):
-        raise TypeError("MethodProvides for method %r cannot be called directly" % (self.method_func))
-
-@paramdecorator
-def deprecated(func, reason="deprecated"):
-    """This is a decorator which can be used to mark functions
-    as deprecated. It will result in a warning being emitted
-    when the function is used.
-
-    from http://wiki.python.org/moin/PythonDecoratorLibrary#Generating_Deprecation_Warnings
-    """
-    @functools.wraps(func)
-    def new_func(*args, **kwargs):
-        'shut up, pylint'
-        warnings.warn_explicit("Call to deprecated function %s: %s." % (func.__name__, reason),
-                      category=DeprecationWarning,
-                      filename=func.func_code.co_filename,
-                      lineno=func.func_code.co_firstlineno + 1)
-        return func(*args, **kwargs)
-    return new_func
-
-'''
-class EnumElement(object):
-    def __init__(self, owner, index, name):
-        self.index = index
-        self.name = name
-        self.owner = owner
-
-    def __str__(self):
-        return self.name
-
-    def __repr__(self):
-        return self.owner.name + "." + self.name
-
-class Enum(object):
-
-    def __init__(self, enumname, *lookup):
-        self.name = enumname
-        lookup = list(lookup)
-        self.lookup = lookup
-        for index, item in enumerate(lookup):
-            lookup[index] = EnumElement(enumname, index, item)
-            setattr(self, item, lookup[index])
-
-    def __repr__(self):
-        return "Enum(%r)" % self.name
-'''
-
 class ExceptionWithMessage(Exception):
     """
     Subclass this class and provide a docstring; the docstring will be

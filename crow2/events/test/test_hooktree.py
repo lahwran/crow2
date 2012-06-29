@@ -169,7 +169,7 @@ class TestHookTreeLazy(object):
             assert event.fourth
             event.simple = True
 
-        hooktree._unlazy() # todo: failing because of paramdecorator preventing .tag
+        hooktree._unlazy()
 
         event = hooktree.child_hook.fire()
         assert event.simple

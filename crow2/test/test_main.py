@@ -20,13 +20,12 @@ class DummyTracker(object):
 
 def test_main(monkeypatch):
     # don't want plugins messing with it to make permanent changes
-    hook = HookTree()
-    monkeypatch.setattr(crow2.main, "hook", hook)
+    hook = HookTree(start_lazy=True)
 
     trackers = []
     monkeypatch.setattr(crow2.plugin, "Tracker", functools.partial(DummyTracker, trackers))
 
-    main = crow2.main.Main("core", ["pluginset", "pluginset2"])
+    main = crow2.main.Main(hook, "core", ["pluginset", "pluginset2"])
 
     assert len(trackers) == 3
     core, pluginset, pluginset2 = trackers
@@ -111,8 +110,9 @@ class TestMainloopHook(object):
             hook.fire()
 
 class DummyMain(object):
-    def __init__(self, dummymains, core, plugins):
+    def __init__(self, dummymains, hook, core, plugins):
         dummymains.append(self)
+        self.hook = hook
         self.core = core
         self.plugins = plugins
         self.was_run = False
@@ -127,6 +127,7 @@ class TestScriptmain(object):
         monkeypatch.setattr(crow2.main, "Main", functools.partial(DummyMain, dummymains))
 
         crow2.main.scriptmain(["core", "pluginset", "pluginset2"])
+        assert dummymains[0].hook == crow2.hook
         assert dummymains[0].core == "core"
         assert dummymains[0].plugins == ["pluginset", "pluginset2"]
         assert dummymains[0].was_run
@@ -147,6 +148,7 @@ class TestScriptmain(object):
 
         crow2.main.scriptmain()
 
+        assert dummymains[0].hook == crow2.hook
         assert dummymains[0].core == "core"
         assert dummymains[0].plugins == ["pluginset", "pluginset2"]
         assert dummymains[0].was_run

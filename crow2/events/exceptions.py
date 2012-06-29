@@ -25,3 +25,9 @@ class AlreadyRegisteredError(Exception):
 
 class CyclicDependencyError(Exception):
     "Raised when there is an unresolvable dependency loop"
+
+class ExceptionInCallError(Exception):
+    pass
+
+class DecoratedFuncMissingError(Exception):
+    pass

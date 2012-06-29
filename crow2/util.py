@@ -5,7 +5,10 @@ A dropbox for uncategorized utility code that doesn't belong anywhere else.
 import warnings
 import inspect
 import functools
+import os
 from collections import deque
+
+from twisted.python.reflect import fullyQualifiedName
 from zope.interface import alsoProvides
 
 class DecoratorPartial(object):
@@ -145,5 +148,42 @@ class AttrDict(dict):
     def __setattr__(self, name, attr):
         self[name] = attr
 
+    '''
+    def setdefault(self, name, value, update=True):
+        if update:
+            try:
+                oldvalue = self[name]
+            except KeyError:
+                self[name] = value
+            else:
+                to_update = deque([(oldvalue, newvalue)])
+                while to_update:
+                    target, source = to_update.pop_left()
+                    if isinstance(target, dict) and isinstance(source, dict):
+                        for key in source:
+                            if key not in target:
+                                target[key] = source[key]
+                            else:
+                                to_update.append((target[key], source[key]))
+        else:
+            return dict.setdefault(self, name, value)
+    '''
+
     def __repr__(self):
         return "AttrDict(%s)" % super(AttrDict, self).__repr__() #pragma: no cover
+
+DEBUG = "CROW2_DEBUG" in os.environ
+
+def DEBUG_calling_name(): #pragma: no cover
+    if not DEBUG:
+        # TODO: print warning if this code is run
+        return "<**CROW2_DEBUG not in environment**>"
+
+    stackframe = inspect.stack()[2] # 0 = us, 1 = who called us, 2 = who called them
+    frame = stackframe[0]
+    code_name = frame.f_code.co_name
+
+    module = inspect.getmodule(frame)
+    modulename = fullyQualifiedName(module)
+
+    return modulename + '.' + code_name

@@ -6,7 +6,7 @@ from twisted.python.reflect import namedAny
 from twisted.python import log
 from collections import defaultdict
 from crow2.util import paramdecorator
-from .toposort import topological_sort
+from .util import topological_sort
 from .exceptions import (NameResolutionError, NotRegisteredError, DuplicateRegistrationError,
         InvalidOrderRequirementsError, DependencyMissingError)
 

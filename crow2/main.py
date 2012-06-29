@@ -34,11 +34,12 @@ class MainloopHook(object):
     __call__ = register
 
 class Main(object):
-    def __init__(self, core, plugins):
-        hook.createhook("init")
-        hook.createhook("deinit")
-        hook.createhook("stopmainloop")
-        hook.createhook("mainloop", hook_class=MainloopHook)
+    def __init__(self, hook, core, plugins):
+        self.hook = hook
+        self.hook.createhook("init")
+        self.hook.createhook("deinit")
+        self.hook.createhook("stopmainloop")
+        self.hook.createhook("mainloop", hook_class=MainloopHook)
 
         self.core_loader = plugin.Tracker(core)
         self.plugin_loaders = [plugin.Tracker(package) for package in plugins]
@@ -51,12 +52,13 @@ class Main(object):
             loader.load()
 
     def run(self):
-        event = hook.init.fire(main=self)
-        hook.mainloop.fire(event, main=self)
-        hook.deinit.fire(event, main=self)
+        self.hook._unlazy()
+        event = self.hook.init.fire(main=self)
+        self.hook.mainloop.fire(event, main=self)
+        self.hook.deinit.fire(event, main=self)
 
     def quit(self, exitcode=0):
-        hook.stopmainloop.fire(main=self, exitcode=exitcode)
+        self.hook.stopmainloop.fire(main=self, exitcode=exitcode)
 
 def scriptmain(sysargs=None):
     if sysargs is None:
@@ -80,5 +82,5 @@ def scriptmain(sysargs=None):
                 "(can be specified multiple times)")
     args = parser.parse_args(sysargs)
 
-    main = Main(args.core, args.plugins)
+    main = Main(hook, args.core, args.plugins)
     main.run()

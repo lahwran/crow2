@@ -128,7 +128,7 @@ def test_instancehandler():
 
     a_method = vars(Target)["a_method"]
     regs = a_method._crow2_instancehookregs
-    by_names = dict([(reg.names, reg) for reg in regs])
+    by_names = dict([(reg.attributes, reg) for reg in regs])
 
     assert set(by_names.keys()) == set((("thing", "hook"), ("otherthing", "otherhook"), ("argthing", "arg")))
 
@@ -192,7 +192,7 @@ def test_instancehandler_missinghook():
 
     event = AttrDict()
 
-    with pytest.raises(exceptions.NotInstantiableError):
+    with pytest.raises(AttributeError):
         reg.add_bound_method(target.a_method, event)
 
 def test_instancehandler_badarguments():
@@ -214,7 +214,7 @@ def test_instancehandler_badarguments():
 
     event = AttrDict(func=func)
 
-    with pytest.raises(exceptions.NotInstantiableError):
+    with pytest.raises(exceptions.ExceptionInCallError):
         reg.add_bound_method(target.a_method, event)
 
 def test_handlermethod():
@@ -249,7 +249,7 @@ def test_get_method_regs():
     assert len(regs) == 2
     assert (hook0, (), {}) in regs
     assert (hook1, (), {}) in regs
-    assert set(x.names for x in _get_method_regs(handler)[1:]) == set((("thing", "hook"), ("otherthing", "derp"), ("derp",), ()))
+    assert set(x.attributes for x in _get_method_regs(handler)[1:]) == set((("thing", "hook"), ("otherthing", "derp"), ("derp",), ()))
 
     def handler():
         should_never_run()

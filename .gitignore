@@ -7,3 +7,8 @@ exocet/
 ______*
 
 /config.*
+
+htmlcov/
+*.egg-info
+.coverage
+*.sw?

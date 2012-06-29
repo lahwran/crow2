@@ -1,20 +1,106 @@
 import weakref
+import itertools
 
-from crow2.util import paramdecorator
+from crow2.util import paramdecorator, DEBUG, DEBUG_calling_name
 from .hook import Hook, IDecoratorHook, DecoratorMixin
 from .exceptions import AlreadyRegisteredError, NameResolutionError, NotRegisteredError
+from crow2.events.util import LazyCall, LazyDecorator
 from zope.interface import implementer
 
-class HookTree(object): #TODO: make this do stuff
+class _LazyHookTree(object):
+    def __init__(self, calls, specials, names):
+        self._lazy_calls = calls
+        self._lazy_specials = specials
+        self._lazy_names = names
+
+    def __call__(self, *args, **keywords):
+        lazy_call = LazyCall(self._lazy_names, args, keywords)
+        self._lazy_calls.append(lazy_call)
+
+        self._lazy_last_call = lazy_call 
+
+        return self._decorate(*args, **keywords)
+
+    @paramdecorator(include_call_type=True)
+    def _decorate(self, func, *args, **keywords):
+        self._lazy_calls.remove(self._lazy_last_call)
+        del self._lazy_last_call
+
+        is_simple_call = keywords.pop("paramdecorator_simple_call")
+
+        lazy_call = _KnownLazyCall(self._lazy_names, args, keywords, is_decorator=True, 
+                simple_decorator=is_simple_call, func=func)
+        self._lazy_calls.append(lazy_call)
+
+        return func
+
+    def __getattr__(self, name):
+        return _LazyHookTree(self._lazy_calls, self._lazy_specials, self._lazy_names + (name,))
+
+    def createhook(self, name, *args, **keywords):
+        lazy_call = LazyCall(self._lazy_names + ("createhook",), (name,) + args, keywords)
+        self._lazy_specials.append(lazy_call)
+
+        return getattr(self, name)
+
+    def createsub(self, name, *args, **keywords):
+        lazy_call = LazyCall(self._lazy_names + ("createsub",), (name,) + args, keywords)
+        self._lazy_specials.append(lazy_call)
+
+        return getattr(self, name)
+
+    @paramdecorator(argname="hook_class")
+    def instantiatehook(self, name, hook_class, *args, **keywords):
+        keywords["hook_class"] = hook_class
+        lazy_call = LazyCall(self._lazy_names + ("instantiatehook",), (name,) + args, keywords)
+        self._lazy_specials.append(lazy_call)
+        return hook_class
+
+    def addhook(self, name, instance, *args, **keywords):
+        lazy_call = LazyCall(self._lazy_names + ("addhook",), (name, instance) + args, keywords)
+        self._lazy_specials.append(lazy_call)
+        return instance
+
+class _KnownLazyCall(LazyCall):
+    def __init__(self, attributes, args, keywords, is_decorator=False, simple_decorator=True, func=None):
+        super(_KnownLazyCall, self).__init__(attributes, args, keywords, is_decorator, simple_decorator)
+        self.func = func
+
+    def resolve(self, target_obj):
+        super(_KnownLazyCall, self).resolve(target_obj, self.func)
+
+class HookTree(_LazyHookTree):
     """
     Contains hooks or hookcategories. children can be accessed as attributes.
     """
-    def __init__(self, default_hook_class=Hook, name=None):
-        self._children = {}
-        self._default_hook_class = default_hook_class
+    def __init__(self, hook_class=Hook, name=None, start_lazy=False):
+        self._default_hook_class = hook_class
         self._name = name
 
+        if DEBUG and self._name is None:
+            self._name = DEBUG_calling_name() + ".unnamed_HookTree"
+
+        self._lazy = start_lazy
+        self._started_lazy = start_lazy
+        self._lazy_calls = []
+        self._lazy_specials = []
+        self._lazy_names = ()
+
+        if not start_lazy:
+            self._children = {}
+
+    def _unlazy(self):
+        if not self._lazy:
+            raise AlreadyRegisteredError("%r is not lazy (started lazy: %r)" % (self, self._started_lazy))
+        self._children = {}
+        self._lazy = False
+        for lazycall in itertools.chain(self._lazy_specials, self._lazy_calls):
+            lazycall.resolve(self)
+
     def __getattr__(self, attr):
+        if self._lazy:
+            return super(HookTree, self).__getattr__(attr)
+
         try:
             return self._children[attr]
         except KeyError:
@@ -22,10 +108,17 @@ class HookTree(object): #TODO: make this do stuff
 
     @paramdecorator(argname="hook_class")
     def instantiatehook(self, name, hook_class, *args, **keywords):
-        self.createhook(name, hook_class=hook_class, *args, **keywords)
+        if self._lazy:
+            keywords["hook_class"] = hook_class
+            return super(HookTree, self).instantiatehook(name, *args, **keywords)
+        else:
+            self.createhook(name, hook_class=hook_class, *args, **keywords)
         return hook_class
 
     def createhook(self, name, *args, **keywords):
+        if self._lazy:
+            return super(HookTree, self).createhook(name, *args, **keywords)
+
         if name in self._children:
             raise AlreadyRegisteredError("Hook name %r already registered to me (%r)" % (name, self))
 
@@ -35,19 +128,31 @@ class HookTree(object): #TODO: make this do stuff
 
         instance = hook_class(*args, **keywords)
         self._children[name] = instance
-        
-        sentinel = object()
-        instance_name = getattr(instance, "_name", sentinel)
-        if instance_name is not sentinel:
-            instance._name = "%s.%s" % (self._name, name)
+
+        self._name_child(instance, name)
 
         return instance
 
-    def createsub(self, name, *args, **keywords):
-        return self.createhook(name, hook_class=type(self), *args, **keywords)
+    def _name_child(self, child, name):
+        sentinel = object()
+        child_name = getattr(child, "_name", sentinel)
+        if child_name is not sentinel:
+            child._name = "%s.%s" % (self._name, name)
 
-    def addhook(self, name, instance):
-        self._children[name] = instance
+    def createsub(self, name, *args, **keywords):
+        if self._lazy:
+            return super(HookTree, self).createsub(name, *args, **keywords)
+
+        self.createhook(name, hook_class=type(self), *args, **keywords)
+        return self._children[name]
+
+    def addhook(self, name, instance, name_child=True):
+        if self._lazy:
+            super(HookTree, self).addhook(name, instance, name_child=name_child)
+        else:
+            self._children[name] = instance
+            if name_child:
+                self._name_child(instance, name)
         return instance
 
     def __repr__(self):

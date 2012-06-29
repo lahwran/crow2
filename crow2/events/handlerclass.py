@@ -1,8 +1,11 @@
-from crow2.util import AttrDict, paramdecorator
-from .exceptions import AlreadyRegisteredError, NotRegisteredError, NotInstantiableError
 import inspect
 import functools
+
 from twisted.python import log
+
+from crow2.util import AttrDict, paramdecorator
+from crow2.events.util import LazyCall
+from .exceptions import AlreadyRegisteredError, NotRegisteredError, NotInstantiableError
 
 class HookMethodProxy(object):
     """
@@ -86,13 +89,10 @@ class HookMethodProxy(object):
     def __repr__(self):
         return "MethodProxy(%r)" % self.methodfunc
 
-class InstanceHookReference(object):
-    def __init__(self, names, simple_call, func, args, keywords):
-        self.names = names
-        self.simple_call = simple_call
-        self.func = func
-        self.args = args
-        self.keywords = keywords
+class InstanceHookReference(LazyCall):
+    def __init__(self, *args, **keywords):
+        keywords["is_decorator"] = True
+        super(InstanceHookReference, self).__init__(*args, **keywords)
 
         self.method_hooks = {}
 
@@ -103,40 +103,20 @@ class InstanceHookReference(object):
         pass
 
     def add_bound_method(self, bound_method, event):
-        obj = event
-        found_names = []
-        try:
-            for name in self.names:
-                obj = getattr(obj, name)
-                found_names.append(name)
-        except AttributeError:
-            from twisted.python.reflect import fullyQualifiedName
-            raise NotInstantiableError("%s: attribute %r not in event.%s (type %r)" % (fullyQualifiedName(bound_method), name, ".".join(found_names), type(obj)))
-
-        try:
-            if self.simple_call:
-                obj(bound_method)
-            else:
-                obj(*self.args, **self.keywords)(bound_method)
-        except Exception:
-            from twisted.python.reflect import fullyQualifiedName
-            import traceback
-            formatted = traceback.format_exc()
-            raise NotInstantiableError("%s: exception while calling hook:\n\n%s" % (fullyQualifiedName(bound_method), formatted))
+        obj = self.resolve(event, bound_method)
 
         self.method_hooks[bound_method] = obj
 
     def remove_bound_method(self, bound_method):
         self.method_hooks[bound_method].unregister(bound_method)
         del self.method_hooks[bound_method]
-        
 
 class _InstanceHandler(object):
     def __init__(self, names=()):
-        self.__names = names
+        self._names = names
 
     def __getattr__(self, name):
-        return _InstanceHandler(self.__names + (name,))
+        return _InstanceHandler(self._names + (name,))
 
     @paramdecorator(include_call_type=True)
     def __call__(self, func, *args, **keywords):
@@ -148,9 +128,10 @@ class _InstanceHandler(object):
             instancehookregs = func._crow2_instancehookregs
         except AttributeError:
             func._crow2_instancehookregs = instancehookregs = []
-        reg = InstanceHookReference(self.__names, is_simple_call, func, args, keywords)
+        reg = InstanceHookReference(self._names, args, keywords, simple_decorator=is_simple_call)
         instancehookregs.append(reg)
         return func
+
 
 instancehandler = _InstanceHandler()
 

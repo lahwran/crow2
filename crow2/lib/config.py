@@ -1,5 +1,6 @@
 from crow2 import hook
-from crow2.events import HookMultiplexer, CommandHook, Hook
+from crow2.events.hooktree import HookMultiplexer, CommandHook
+from crow2.events.hook import Hook
 from crow2.util import AttrDict
 from crow2 import log
 
@@ -43,6 +44,7 @@ def write_json(event):
 
 @hook.init(tag="config")
 def config(event):
+    print "loading config"
     config_type = "json"
     filename = "config." + config_type
     config = AttrDict()

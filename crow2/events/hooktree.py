@@ -4,7 +4,7 @@ import itertools
 from crow2.util import paramdecorator, DEBUG, DEBUG_calling_name
 from .hook import Hook, IDecoratorHook, DecoratorMixin
 from .exceptions import AlreadyRegisteredError, NameResolutionError, NotRegisteredError
-from crow2.events.util import LazyCall, LazyDecorator
+from crow2.events.util import LazyCall
 from zope.interface import implementer
 
 class _LazyHookTree(object):
@@ -159,8 +159,8 @@ class HookTree(_LazyHookTree):
         return "<HookTree %s>" % self._name
 
 class ChildHook(Hook):
-    def __init__(self, parent, name):
-        super(ChildHook, self).__init__()
+    def __init__(self, parent, name, *args, **keywords):
+        super(ChildHook, self).__init__(*args, **keywords)
         self._parent = parent
         self._name = name
 
@@ -269,15 +269,14 @@ class HookMultiplexer(DecoratorMixin):
         child = self._get_or_create_child(handler, name)
         return child.register_once(handler, **keywords)
 
-    def unregister(self, handler):
-        registrations = 0
+    def unregister(self, handler, _registrations=0):
         for child in self._children.values():
             try:
                 child.unregister(handler)
-                registrations += 1
+                _registrations += 1
             except NotRegisteredError:
                 pass
-        if not registrations:
+        if not _registrations:
             raise NotRegisteredError("%r: no sub-hooks unregistered %r" % (self, handler))
 
     def __repr__(self):
@@ -296,11 +295,11 @@ class _InstanceHookProxy(DecoratorMixin):
         kwargs["_instance"] = self.instance_weakref()
         return self.parent.fire(*args, **kwargs)
 
-    def register(self, handler, **keywords):
-        return self.hook.register(handler, **keywords)
+    def register(self, handler, *args, **keywords):
+        return self.hook.register(handler, *args, **keywords)
 
-    def register_once(self, handler, **keywords):
-        return self.hook.register_once(handler, **keywords)
+    def register_once(self, handler, *args, **keywords):
+        return self.hook.register_once(handler, *args, **keywords)
 
     def unregister(self, handler):
         return self.hook.unregister(handler)

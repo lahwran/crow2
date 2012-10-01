@@ -38,14 +38,6 @@ def topological_sort(graph_unsorted):
 
     return graph_sorted
 
-class LazyDecorator(object):
-    def __init__(self, names):
-        self._names = names
-
-    def __getattr__(self, name):
-        cls = type(self)
-        return cls(self._names + (name,))
-
 def format_args(args, keywords):
     results = []
 
@@ -125,7 +117,7 @@ class LazyCall(object):
             decstring = ""
             if not self.simple_decorator:
                 decstring = format_args(self.args, self.keywords)
-            decstring += "(%r)" % self.func
+            decstring += "(<func>)"
             return initial % decstring
 
         return initial % format_args(self.args, self.keywords)

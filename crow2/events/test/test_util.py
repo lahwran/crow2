@@ -124,3 +124,31 @@ def test_not_really_complex():
         assert "NoneType" in e.message
     else:
         should_never_run()
+
+def test_repr():
+    lazycall = LazyCall(("herp", "derp"), ("positional_arg",), {"keyword": "kwarg"}, False)
+
+    repred = repr(lazycall)
+    assert "herp.derp" in repred
+    assert "positional_arg" in repred
+    assert "keyword" in repred
+    assert "kwarg" in repred
+
+def test_decorator_repr():
+    lazycall = LazyCall(("herp", "derp"), ("positional_arg",), {"keyword": "kwarg"}, True, False)
+
+    repred = repr(lazycall)
+    assert "herp.derp" in repred
+    assert "positional_arg" in repred
+    assert "keyword" in repred
+    assert "kwarg" in repred
+    assert "func" in repred
+
+def test_simple_decorator_repr():
+    lazycall = LazyCall(("herp", "derp"), ("positional_arg",), {"keyword": "kwarg"}, True)
+
+    repred = repr(lazycall)
+    assert "herp.derp" in repred
+    assert "positional_arg" not in repred
+    assert "kwarg" not in repred
+    assert "keyword" not in repred

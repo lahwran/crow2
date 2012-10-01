@@ -25,10 +25,13 @@ class IObjectSequence(IExtendedReadSequence):
     "A sequence of objects - potentially characters - which are independent"
 
 class ITuple(IObjectSequence):
-    "A tuple or very similar object"
+    "An immutable sequence of objects"
 
 class IList(IObjectSequence, IWriteSequence):
-    "A list or very similar object"
+    "A mutable sequence of objects"
+
+class IFile(Interface):
+    "A file-like object"
 
 
 fakeimplementeds = {
@@ -36,7 +39,8 @@ fakeimplementeds = {
     float: IReal,
     str: IString,
     list: IList,
-    tuple: ITuple
+    tuple: ITuple,
+    file: IFile,
 #    set: ISet
 }
 
@@ -91,6 +95,7 @@ def register(implementor, orig, *target_interfaces):
 
     for target_interface in target_interfaces:
         registry.register([orig_interface], target_interface, '', implementor)
+    return implementor
 
 def adapter_for(orig, *target_interfaces):
     """
@@ -133,6 +138,9 @@ def lookup(targetinterface, obj):
         sourceinterface = fakeimplementeds[type(obj)]
     except KeyError:
         sourceinterface = providedBy(obj)
+
+    if targetinterface == sourceinterface:
+        return obj
 
     implementor = registry.lookup1(sourceinterface, targetinterface, '')
 
